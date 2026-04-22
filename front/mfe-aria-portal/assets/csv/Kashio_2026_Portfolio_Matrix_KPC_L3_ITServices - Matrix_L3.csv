@@ -1,0 +1,133 @@
+L1 Domain,L2 Capability,L3 Capability,Projects,Initiatives,Squads,Count
+Blockchain,Tokenization & Settlement,Compliance & Monitoring,IDPRD-007,KCOIN - Infra Blockchain2,Nova,1
+Blockchain,Tokenization & Settlement,On-chain Settlement Flows,IDPRD-007,KCOIN - Infra Blockchain2,Nova,1
+Blockchain,Tokenization & Settlement,Token Ledger Integration,IDPRD-007,KCOIN - Infra Blockchain2,Nova,1
+Blockchain,Tokenization & Settlement,Wallet/Key Management,IDPRD-007,KCOIN - Infra Blockchain2,Nova,1
+Connectivity & Partners,Bank Connectivity,Bank Acknowledgements,IDPRD-039,Host to Host,SQ3,1
+Connectivity & Partners,Bank Connectivity,File Exchange (SFTP/API),IDPRD-039,Host to Host,SQ3,1
+Connectivity & Partners,Bank Connectivity,Host-to-Host Integration,IDPRD-039,Host to Host,SQ3,1
+Connectivity & Partners,Bank Connectivity,Operational Monitoring,IDPRD-039,Host to Host,SQ3,1
+Connectivity & Partners,Rail/PSP Onboarding,Contracting & Credentials,IDPRD-013,Onboarding Digital para PSP,SQ 4,1
+Connectivity & Partners,Rail/PSP Onboarding,Operational SLAs & Monitoring,IDPRD-013,Onboarding Digital para PSP,SQ 4,1
+Connectivity & Partners,Rail/PSP Onboarding,Rail Enablement Checklist,IDPRD-013,Onboarding Digital para PSP,SQ 4,1
+Connectivity & Partners,Rail/PSP Onboarding,Sandbox & Certification,IDPRD-013,Onboarding Digital para PSP,SQ 4,1
+Customer Lifecycle,Customer Portal,Audit Logs & Activity,IDPRD-001,Portal Empresa,Nova,1
+Customer Lifecycle,Customer Portal,Company Profile & Configuration,IDPRD-001,Portal Empresa,Nova,1
+Customer Lifecycle,Customer Portal,Developer Console / Keys,IDPRD-001,Portal Empresa,Nova,1
+Customer Lifecycle,Customer Portal,User & Role Management,IDPRD-001,Portal Empresa,Nova,1
+Customer Lifecycle,Onboarding Operations,Account Provisioning,IDPRD-002,Portal Admin Onboarding 1.0,Nova,1
+Customer Lifecycle,Onboarding Operations,Go-live Checklist,IDPRD-002,Portal Admin Onboarding 1.0,Nova,1
+Customer Lifecycle,Onboarding Operations,KYC/KYB Intake,IDPRD-002,Portal Admin Onboarding 1.0,Nova,1
+Customer Lifecycle,Onboarding Operations,Workflow & Approvals,IDPRD-002,Portal Admin Onboarding 1.0,Nova,1
+Data & AI,AI Agentic Framework,Agent Monitoring & Eval,IDPRD-043,KAIA - Kashio AI Agentic Framework,SQ AI,1
+Data & AI,AI Agentic Framework,Knowledge/RAG Layer,IDPRD-043,KAIA - Kashio AI Agentic Framework,SQ AI,1
+Data & AI,AI Agentic Framework,Safety & Governance,IDPRD-043,KAIA - Kashio AI Agentic Framework,SQ AI,1
+Data & AI,AI Agentic Framework,Workflow Orchestration,IDPRD-043,KAIA - Kashio AI Agentic Framework,SQ AI,1
+Data & AI,AI Content Pipelines,Content Generation Pipelines,"IDPRD-006, IDPRD-045","AI Content AI - Squad ProductAI | ARIA (Ai Content Generation, pipelines de generacion)",SQ AI,2
+Data & AI,AI Content Pipelines,Human Approval Workflow,"IDPRD-006, IDPRD-045","AI Content AI - Squad ProductAI | ARIA (Ai Content Generation, pipelines de generacion)",SQ AI,2
+Data & AI,AI Content Pipelines,Prompt/Template Library,"IDPRD-006, IDPRD-045","AI Content AI - Squad ProductAI | ARIA (Ai Content Generation, pipelines de generacion)",SQ AI,2
+Data & AI,AI Content Pipelines,Publishing & Analytics,"IDPRD-006, IDPRD-045","AI Content AI - Squad ProductAI | ARIA (Ai Content Generation, pipelines de generacion)",SQ AI,2
+Data & AI,AI Product Tooling,Pricing/Quote Automation,IDPRD-046,"AI enabled Product Tooling (BizProposal, product selector usando KPC",SQ AI,1
+Data & AI,AI Product Tooling,Product Selector (KPC),IDPRD-046,"AI enabled Product Tooling (BizProposal, product selector usando KPC",SQ AI,1
+Data & AI,AI Product Tooling,Proposal Generation,IDPRD-046,"AI enabled Product Tooling (BizProposal, product selector usando KPC",SQ AI,1
+Data & AI,AI Product Tooling,Sales Enablement Analytics,IDPRD-046,"AI enabled Product Tooling (BizProposal, product selector usando KPC",SQ AI,1
+Data & AI,Product Data Platform,Analytics & BI Layer,IDPRD-044,DataBridge (Product DataLake),SQ AI,1
+Data & AI,Product Data Platform,Data Quality & Lineage,IDPRD-044,DataBridge (Product DataLake),SQ AI,1
+Data & AI,Product Data Platform,Ingestion Pipelines,IDPRD-044,DataBridge (Product DataLake),SQ AI,1
+Data & AI,Product Data Platform,Unified Data Model,IDPRD-044,DataBridge (Product DataLake),SQ AI,1
+Developer Platform,SDK Management,Client-specific Customization,"IDPRD-014, IDPRD-015",Proceso AI para crear SDKs customizable para Empresas | Proceso AI para crear SDKs customizable para PSP o Rieles,SQ 4,2
+Developer Platform,SDK Management,Documentation Automation,"IDPRD-014, IDPRD-015",Proceso AI para crear SDKs customizable para Empresas | Proceso AI para crear SDKs customizable para PSP o Rieles,SQ 4,2
+Developer Platform,SDK Management,SDK Template Generation,"IDPRD-014, IDPRD-015",Proceso AI para crear SDKs customizable para Empresas | Proceso AI para crear SDKs customizable para PSP o Rieles,SQ 4,2
+Developer Platform,SDK Management,Versioning & Release,"IDPRD-014, IDPRD-015",Proceso AI para crear SDKs customizable para Empresas | Proceso AI para crear SDKs customizable para PSP o Rieles,SQ 4,2
+Expansion,Country Enablement,Country Configuration,"IDPRD-021, IDPRD-022, IDPRD-023, IDPRD-024, IDPRD-025, IDPRD-026, IDPRD-027, IDPRD-028, IDPRD-029, IDPRD-030, IDPRD-031, IDPRD-032, IDPRD-033, IDPRD-034",ARG: Apertura Mercado Payin y Payout | BOL: Apertura Mercado Payin y Payout | BRA: Apertura Mercado Payin y Payout | CHL: Estabilidad Mercado Payin y Payout | COL: Apertura Mercado Payin y Payout | CRI: Apertura Mercado Payin y Payout | ECU: Apertura Mercado Payin y Payout | GTM: Apertura Mercado Payin y Payout | MEX: Estabilidad Mercado Payin y Payout | PAN: Apertura Mercado Payin y Payout | PER: Estabilidad Mercado Payin y Payout | PLAYBOOK para apertura de nuevos mercado | SLV: Apertura Mercado Payin y Payout | USA: Apertura Mercado Payin y Payout,"SQ 2, SQ 4, SQ4, SQ4, SQ1, SQ4, SQ2",14
+Expansion,Country Enablement,Go-live Readiness,"IDPRD-021, IDPRD-022, IDPRD-023, IDPRD-024, IDPRD-025, IDPRD-026, IDPRD-027, IDPRD-028, IDPRD-029, IDPRD-030, IDPRD-031, IDPRD-032, IDPRD-033, IDPRD-034",ARG: Apertura Mercado Payin y Payout | BOL: Apertura Mercado Payin y Payout | BRA: Apertura Mercado Payin y Payout | CHL: Estabilidad Mercado Payin y Payout | COL: Apertura Mercado Payin y Payout | CRI: Apertura Mercado Payin y Payout | ECU: Apertura Mercado Payin y Payout | GTM: Apertura Mercado Payin y Payout | MEX: Estabilidad Mercado Payin y Payout | PAN: Apertura Mercado Payin y Payout | PER: Estabilidad Mercado Payin y Payout | PLAYBOOK para apertura de nuevos mercado | SLV: Apertura Mercado Payin y Payout | USA: Apertura Mercado Payin y Payout,"SQ 2, SQ 4, SQ4, SQ4, SQ1, SQ4, SQ2",14
+Expansion,Country Enablement,Local Rail/PSP Connections,"IDPRD-021, IDPRD-022, IDPRD-023, IDPRD-024, IDPRD-025, IDPRD-026, IDPRD-027, IDPRD-028, IDPRD-029, IDPRD-030, IDPRD-031, IDPRD-032, IDPRD-033, IDPRD-034",ARG: Apertura Mercado Payin y Payout | BOL: Apertura Mercado Payin y Payout | BRA: Apertura Mercado Payin y Payout | CHL: Estabilidad Mercado Payin y Payout | COL: Apertura Mercado Payin y Payout | CRI: Apertura Mercado Payin y Payout | ECU: Apertura Mercado Payin y Payout | GTM: Apertura Mercado Payin y Payout | MEX: Estabilidad Mercado Payin y Payout | PAN: Apertura Mercado Payin y Payout | PER: Estabilidad Mercado Payin y Payout | PLAYBOOK para apertura de nuevos mercado | SLV: Apertura Mercado Payin y Payout | USA: Apertura Mercado Payin y Payout,"SQ 2, SQ 4, SQ4, SQ4, SQ1, SQ4, SQ2",14
+Expansion,Country Enablement,Regulatory Checklist,"IDPRD-021, IDPRD-022, IDPRD-023, IDPRD-024, IDPRD-025, IDPRD-026, IDPRD-027, IDPRD-028, IDPRD-029, IDPRD-030, IDPRD-031, IDPRD-032, IDPRD-033, IDPRD-034",ARG: Apertura Mercado Payin y Payout | BOL: Apertura Mercado Payin y Payout | BRA: Apertura Mercado Payin y Payout | CHL: Estabilidad Mercado Payin y Payout | COL: Apertura Mercado Payin y Payout | CRI: Apertura Mercado Payin y Payout | ECU: Apertura Mercado Payin y Payout | GTM: Apertura Mercado Payin y Payout | MEX: Estabilidad Mercado Payin y Payout | PAN: Apertura Mercado Payin y Payout | PER: Estabilidad Mercado Payin y Payout | PLAYBOOK para apertura de nuevos mercado | SLV: Apertura Mercado Payin y Payout | USA: Apertura Mercado Payin y Payout,"SQ 2, SQ 4, SQ4, SQ4, SQ1, SQ4, SQ2",14
+Expansion,Portfolio by Country,Capacity Planning,IDPRD-051,Roadmap Expansion Producto por Pais - CDPO,TBD,1
+Expansion,Portfolio by Country,Country Roadmap Tracking,IDPRD-051,Roadmap Expansion Producto por Pais - CDPO,TBD,1
+Expansion,Portfolio by Country,Launch Governance,IDPRD-051,Roadmap Expansion Producto por Pais - CDPO,TBD,1
+Expansion,Portfolio by Country,Regional KPIs,IDPRD-051,Roadmap Expansion Producto por Pais - CDPO,TBD,1
+Financial Operations,Collections Management,Collections Analytics,IDPRD-003,Cobranza Inteligente,Nova,1
+Financial Operations,Collections Management,Customer Segmentation & Dunning,IDPRD-003,Cobranza Inteligente,Nova,1
+Financial Operations,Collections Management,Omnichannel Outreach,IDPRD-003,Cobranza Inteligente,Nova,1
+Financial Operations,Collections Management,Promise-to-Pay Tracking,IDPRD-003,Cobranza Inteligente,Nova,1
+Financial Operations,Ledger & Accounting,Audit & Compliance,IDPRD-010,Core Financiero KLedger,Nova,1
+Financial Operations,Ledger & Accounting,Balances & Reports,IDPRD-010,Core Financiero KLedger,Nova,1
+Financial Operations,Ledger & Accounting,Double-entry Ledger,IDPRD-010,Core Financiero KLedger,Nova,1
+Financial Operations,Ledger & Accounting,Posting Rules,IDPRD-010,Core Financiero KLedger,Nova,1
+Financial Operations,Reconciliation Management,Bank Statement Matching,IDPRD-004,Reconciliación Inteligente,SQ 2,1
+Financial Operations,Reconciliation Management,Exception Handling,IDPRD-004,Reconciliación Inteligente,SQ 2,1
+Financial Operations,Reconciliation Management,Reconciliation KPIs & Observability,IDPRD-004,Reconciliación Inteligente,SQ 2,1
+Financial Operations,Reconciliation Management,Statement Ingestion,IDPRD-004,Reconciliación Inteligente,SQ 2,1
+Integrations,ERP Integration,ERP Connectors,IDPRD-011,Soporte de ERP,Nova,1
+Integrations,ERP Integration,Mapping & Transformations,IDPRD-011,Soporte de ERP,Nova,1
+Integrations,ERP Integration,Posting/Settlement Sync,IDPRD-011,Soporte de ERP,Nova,1
+Integrations,ERP Integration,Reconciliation Support,IDPRD-011,Soporte de ERP,Nova,1
+Observability & Governance,Change Governance,Change Log & Traceability,IDPRD-042,VEGA - integracion con PULSE & OKRs - Gobierno,SQ AI,1
+Observability & Governance,Change Governance,Cross-team RACI,IDPRD-042,VEGA - integracion con PULSE & OKRs - Gobierno,SQ AI,1
+Observability & Governance,Change Governance,Incident & RCA Governance,IDPRD-042,VEGA - integracion con PULSE & OKRs - Gobierno,SQ AI,1
+Observability & Governance,Change Governance,OKR/Outcome Linkage,IDPRD-042,VEGA - integracion con PULSE & OKRs - Gobierno,SQ AI,1
+Observability & Governance,Monitoring & Reporting,Alerts & Notifications,IDPRD-020,Observabilidad y Reportes,SQ 4,1
+Observability & Governance,Monitoring & Reporting,Auditability,IDPRD-020,Observabilidad y Reportes,SQ 4,1
+Observability & Governance,Monitoring & Reporting,Dashboards & KPIs,IDPRD-020,Observabilidad y Reportes,SQ 4,1
+Observability & Governance,Monitoring & Reporting,SLA/SLO Monitoring,IDPRD-020,Observabilidad y Reportes,SQ 4,1
+Observability & Governance,Product Operations,KPI Definitions,IDPRD-041,"Product Ops (framework, standard, KPIs y Gobierno)",SQ AI,1
+Observability & Governance,Product Operations,Portfolio Governance,IDPRD-041,"Product Ops (framework, standard, KPIs y Gobierno)",SQ AI,1
+Observability & Governance,Product Operations,Rituals & Cadence,IDPRD-041,"Product Ops (framework, standard, KPIs y Gobierno)",SQ AI,1
+Observability & Governance,Product Operations,Standards (PRD/SRS),IDPRD-041,"Product Ops (framework, standard, KPIs y Gobierno)",SQ AI,1
+Payments,Card Acquiring,Authorization & Capture,IDPRD-012,Adquirencia Regional,Nova,1
+Payments,Card Acquiring,Disputes/Chargebacks,IDPRD-012,Adquirencia Regional,Nova,1
+Payments,Card Acquiring,Merchant Onboarding,IDPRD-012,Adquirencia Regional,Nova,1
+Payments,Card Acquiring,Settlement & Funding,IDPRD-012,Adquirencia Regional,Nova,1
+Payments,Collections (Pay-in),Collections Reconciliation,IDPRD-040,Recaudo 2.0,SQ2,1
+Payments,Collections (Pay-in),Payment Collection Methods,IDPRD-040,Recaudo 2.0,SQ2,1
+Payments,Collections (Pay-in),Payment Notification Handling,IDPRD-040,Recaudo 2.0,SQ2,1
+Payments,Collections (Pay-in),Settlement Tracking,IDPRD-040,Recaudo 2.0,SQ2,1
+Payments,Payin Orchestration,Idempotency & Retries,IDPRD-016,Payin PSP proxy Hub's - IA,SQ 4,1
+Payments,Payin Orchestration,PSP Abstraction Layer,IDPRD-016,Payin PSP proxy Hub's - IA,SQ 4,1
+Payments,Payin Orchestration,Routing Rules,IDPRD-016,Payin PSP proxy Hub's - IA,SQ 4,1
+Payments,Payin Orchestration,Webhook/Event Handling,IDPRD-016,Payin PSP proxy Hub's - IA,SQ 4,1
+Payments,Payin Reliability,Incident Reduction,IDPRD-035,Mejora continua Payin,SQ2,1
+Payments,Payin Reliability,Monitoring Enhancements,IDPRD-035,Mejora continua Payin,SQ2,1
+Payments,Payin Reliability,Operational Playbooks,IDPRD-035,Mejora continua Payin,SQ2,1
+Payments,Payin Reliability,Performance & Latency Improvements,IDPRD-035,Mejora continua Payin,SQ2,1
+Payments,Payout Orchestration,Idempotency & Retries,IDPRD-017,Payout PSP proxy Hub's - IA,SQ 4,1
+Payments,Payout Orchestration,PSP Abstraction Layer,IDPRD-017,Payout PSP proxy Hub's - IA,SQ 4,1
+Payments,Payout Orchestration,Routing Rules,IDPRD-017,Payout PSP proxy Hub's - IA,SQ 4,1
+Payments,Payout Orchestration,Status Tracking,IDPRD-017,Payout PSP proxy Hub's - IA,SQ 4,1
+Payments,Payout Reliability,Incident Reduction,IDPRD-036,Mejora continua Payout,SQ3,1
+Payments,Payout Reliability,Monitoring Enhancements,IDPRD-036,Mejora continua Payout,SQ3,1
+Payments,Payout Reliability,Operational Playbooks,IDPRD-036,Mejora continua Payout,SQ3,1
+Payments,Payout Reliability,Performance & Latency Improvements,IDPRD-036,Mejora continua Payout,SQ3,1
+Payments,Payout Routing,Cost/Latency Optimization,IDPRD-018,Routing PAYOUT- Patrones,SQ 4,1
+Payments,Payout Routing,Fallback & Resilience,IDPRD-018,Routing PAYOUT- Patrones,SQ 4,1
+Payments,Payout Routing,Routing Analytics,IDPRD-018,Routing PAYOUT- Patrones,SQ 4,1
+Payments,Payout Routing,Rule-based Routing,IDPRD-018,Routing PAYOUT- Patrones,SQ 4,1
+Platform,Design System,AI UI Patterns,IDPRD-008,AI Patterns UI/UX,Nova,1
+Platform,Design System,Component Library,IDPRD-008,AI Patterns UI/UX,Nova,1
+Platform,Design System,Telemetry for UX,IDPRD-008,AI Patterns UI/UX,Nova,1
+Platform,Design System,UX Guidelines,IDPRD-008,AI Patterns UI/UX,Nova,1
+Platform,Enterprise Services,Access Controls,IDPRD-050,EPS - MGS Q2-Q4,TBD,1
+Platform,Enterprise Services,Auditability,IDPRD-050,EPS - MGS Q2-Q4,TBD,1
+Platform,Enterprise Services,Enterprise Entitlements,IDPRD-050,EPS - MGS Q2-Q4,TBD,1
+Platform,Enterprise Services,Service Catalog,IDPRD-050,EPS - MGS Q2-Q4,TBD,1
+Platform,Matching Engine,Matching Accuracy KPIs,IDPRD-009,Motor Matching con ML para todo,Nova,1
+Platform,Matching Engine,Matching Models (ML),IDPRD-009,Motor Matching con ML para todo,Nova,1
+Platform,Matching Engine,Rules + ML Hybrid Matching,IDPRD-009,Motor Matching con ML para todo,Nova,1
+Platform,Matching Engine,Training Data & Feedback Loop,IDPRD-009,Motor Matching con ML para todo,Nova,1
+PriceOps,Rail COGS & Pricing,Margin / CoGS Analytics,"IDPRD-019, IDPRD-049",COGS-RAIL - Ruteo general de precios | PriceOps Billing & Cogs - Q2 - Q4,"SQ 4, TBD",2
+PriceOps,Rail COGS & Pricing,Pricing Rules,"IDPRD-019, IDPRD-049",COGS-RAIL - Ruteo general de precios | PriceOps Billing & Cogs - Q2 - Q4,"SQ 4, TBD",2
+PriceOps,Rail COGS & Pricing,Rail Unit Cost Model,"IDPRD-019, IDPRD-049",COGS-RAIL - Ruteo general de precios | PriceOps Billing & Cogs - Q2 - Q4,"SQ 4, TBD",2
+PriceOps,Rail COGS & Pricing,Routing Decisioning by CoGS,"IDPRD-019, IDPRD-049",COGS-RAIL - Ruteo general de precios | PriceOps Billing & Cogs - Q2 - Q4,"SQ 4, TBD",2
+RiskOps,Fraud Management,Case Management,IDPRD-038,Sistema de fraude,SQ2,1
+RiskOps,Fraud Management,Fraud Analytics,IDPRD-038,Sistema de fraude,SQ2,1
+RiskOps,Fraud Management,Fraud Rules & Signals,IDPRD-038,Sistema de fraude,SQ2,1
+RiskOps,Fraud Management,Risk Scoring,IDPRD-038,Sistema de fraude,SQ2,1
+RiskOps,Identity & Validation,Audit Trails,IDPRD-037,Validación de titularidad,SQ3,1
+RiskOps,Identity & Validation,Beneficiary/Account Validation,IDPRD-037,Validación de titularidad,SQ3,1
+RiskOps,Identity & Validation,Exception Handling,IDPRD-037,Validación de titularidad,SQ3,1
+RiskOps,Identity & Validation,Name Matching Rules,IDPRD-037,Validación de titularidad,SQ3,1
+RiskOps,Risk Governance,Controls & Policies,IDPRD-048,RiskOps reframing Q1-Q4,TBD,1
+RiskOps,Risk Governance,Loss Monitoring,IDPRD-048,RiskOps reframing Q1-Q4,TBD,1
+RiskOps,Risk Governance,Operational Controls,IDPRD-048,RiskOps reframing Q1-Q4,TBD,1
+RiskOps,Risk Governance,Risk Scoring Model,IDPRD-048,RiskOps reframing Q1-Q4,TBD,1

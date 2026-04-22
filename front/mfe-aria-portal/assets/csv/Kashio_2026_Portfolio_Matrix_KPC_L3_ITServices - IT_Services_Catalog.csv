@@ -1,0 +1,30 @@
+IT Service Code,IT Service,Description,L1 Domain,L2 Capability
+ITS-001,Portal Empresa (Company Portal),"Customer-facing portal: company profile, users/roles, configuration, audit logs",Customer Lifecycle,Customer Portal
+ITS-002,Onboarding Admin Portal,"Internal onboarding/operations portal: KYB/KYC intake, provisioning, approvals",Customer Lifecycle,Onboarding Operations
+ITS-003,Payin Orchestration Service,"Abstraction layer for pay-in flows: retries, webhooks/events, routing rules",Payments,Payin Orchestration
+ITS-004,Payout Orchestration Service,"Abstraction layer for payouts: tracking, retries, routing rules",Payments,Payout Orchestration
+ITS-005,Routing & Decisioning Service,"Rule-based routing, optimization by cost/latency, fallbacks, analytics",Payments,Payout Routing
+ITS-006,Reconciliation Management Service,"Statement ingestion, matching, exceptions, reconciliation KPIs",Financial Operations,Reconciliation Management
+ITS-007,Collections (Cobranza) Service,"Dunning orchestration, segmentation, omnichannel outreach, PTP tracking",Financial Operations,Collections Management
+ITS-008,RiskOps - Fraud Service,"Fraud rules/signals, scoring, case management, analytics",RiskOps,Fraud Management
+ITS-009,RiskOps - Titularidad/Validation Service,"Account/beneficiary validation, name match rules, exceptions, audit trails",RiskOps,Identity & Validation
+ITS-010,Ledger Service (Core Financiero),"Double-entry ledger, posting rules, balances, audit/compliance",Financial Operations,Ledger & Accounting
+ITS-011,PriceOps - Rating & Billing,"Usage metering, rating, invoicing, revenue assurance",PriceOps,Billing & Rating
+ITS-012,PriceOps - Rail CoGS Model,"Rail unit cost model, margin analytics, routing by CoGS",PriceOps,Rail COGS & Pricing
+ITS-013,Observability & Reporting,"Dashboards, alerts, SLA/SLO monitoring, auditability",Observability & Governance,Monitoring & Reporting
+ITS-014,Developer SDK Factory,"SDK template generation, client customization, docs automation, versioning",Developer Platform,SDK Management
+ITS-015,Bank Connectivity (H2H),"Host-to-host integration, file exchange, acks, monitoring",Connectivity & Partners,Bank Connectivity
+ITS-016,Rail/PSP Onboarding Service,"Contracting/credentials, certification, enablement checklist, SLAs",Connectivity & Partners,Rail/PSP Onboarding
+ITS-017,Expansion Enablement,"Country configuration, local rails, regulatory checklist, go-live readiness",Expansion,Country Enablement
+ITS-018,AI Agentic Framework (KAIA),"RAG layer, orchestration, monitoring/evals, governance",Data & AI,AI Agentic Framework
+ITS-019,AI Content Pipelines (ARIA/ProductAI),"Prompt library, generation pipelines, approvals, publishing/analytics",Data & AI,AI Content Pipelines
+ITS-020,Product Data Platform (DataBridge),"Ingestion, unified model, BI layer, data quality/lineage",Data & AI,Product Data Platform
+ITS-021,Rules Engine,"Rule authoring, versioning, runtime execution, audit/rollback",Platform,Rules Engine
+ITS-022,Design System (AI Patterns UI/UX),"Component library, UX guidelines, telemetry for UX",Platform,Design System
+ITS-023,Blockchain Settlement (KCOIN),"Token ledger integration, on-chain settlement flows, compliance, key mgmt",Blockchain,Tokenization & Settlement
+ITS-024,Product Ops & Governance,"Standards (PRD/SRS), portfolio governance, KPI defs, cadences",Observability & Governance,Product Operations
+ITS-025,Change Governance (VEGA),"Traceability, incident/RCA governance, OKR linkage, RACI",Observability & Governance,Change Governance
+ITS-026,AI Product Tooling (BizProposal),"Product selector (KPC), proposal generation, quote/pricing automation",Data & AI,AI Product Tooling
+ITS-027,Card Acquiring Service,"Merchant onboarding, auth/capture, settlement, disputes/chargebacks",Payments,Card Acquiring
+ITS-028,ERP Integration Service,"ERP connectors, mappings, posting sync, reconciliation support",Integrations,ERP Integration
+ITS-999,General Platform Service,Generic platform/service placeholder when mapping is unclear,Platform,General

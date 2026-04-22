@@ -1,0 +1,36 @@
+# Same runtime as Dockerfile but with npm ci in final stage (matches prior Dockerfile.express)
+# Includes db.js so /api/db/* routes work when DATABASE_URL is set.
+# Build context: repository root
+#
+#   docker build -f infrastructure-as-code/docker/Dockerfile.express -t aria-frontend .
+#
+FROM node:18-alpine AS frontend-builder
+
+WORKDIR /app
+
+COPY front/mfe-aria-portal/package*.json ./
+RUN npm ci && npm cache clean --force
+
+COPY front/mfe-aria-portal/ ./
+
+ENV NODE_ENV=production
+RUN npm run build
+
+FROM node:18-alpine
+
+WORKDIR /app
+
+COPY back/aria-svc/package*.json ./
+RUN npm ci --only=production && npm cache clean --force
+
+COPY back/aria-svc/index.js ./index.js
+COPY back/aria-svc/db.js ./db.js
+
+COPY --from=frontend-builder /app/dist ./dist
+
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+
+CMD ["node", "index.js"]

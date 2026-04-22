@@ -1,0 +1,51 @@
+# Build context: repository root. Keeps Cloud Build / docker build fast and small.
+# Mirrors legacy .dockerignore behavior, adapted for monorepo layout.
+
+**/node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+**/dist
+**/build
+.output
+
+.env
+.env.local
+.env.*.local
+.env.production.local
+
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+.git
+.gitignore
+.gitattributes
+
+# Docs and legacy bundle (not needed in image)
+**/README.md
+**/docs
+**/*.md
+
+coverage
+.nyc_output
+*.test.js
+*.spec.js
+__tests__
+__mocks__
+
+logs
+*.log
+tmp
+temp
+*.tmp
+
+terminals/
+
+# Optional: exclude full legacy snapshot if present in workspace
+services_aria-frontend_*/

@@ -1,0 +1,46 @@
+# Same as infrastructure-as-code/ci/cloudbuild.yaml — many GCP triggers expect /cloudbuild.yaml at repo root.
+steps:
+  # Step 1: Build Docker image (monorepo paths; Dockerfile in infrastructure-as-code/docker)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'infrastructure-as-code/docker/Dockerfile'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/aria-frontend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/aria-frontend:latest'
+      - '.'
+    
+  # Step 2: Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/aria-frontend']
+    
+  # Step 3: Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'aria-frontend'
+      - '--image=gcr.io/$PROJECT_ID/aria-frontend:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=1'
+      - '--max-instances=10'
+      - '--memory=2Gi'
+      - '--cpu=2'
+      - '--port=8080'
+      - '--timeout=300'
+      - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest'
+
+images:
+  - 'gcr.io/$PROJECT_ID/aria-frontend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/aria-frontend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

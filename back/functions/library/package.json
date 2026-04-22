@@ -1,0 +1,15 @@
+{
+  "name": "aria-library-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions for ARIA Library file management",
+  "main": "index.js",
+  "engines": {
+    "node": "20"
+  },
+  "dependencies": {
+    "@google-cloud/functions-framework": "^3.3.0",
+    "@google-cloud/storage": "^7.7.0",
+    "cors": "^2.8.5"
+  }
+}
+
