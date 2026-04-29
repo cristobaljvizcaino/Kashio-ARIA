@@ -130,19 +130,15 @@ Qué hace
 
 Intenta generar contenido con varios modelos Gemini en orden.
 
-const GEMINI_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.5-pro',
-  'gemini-2.0-flash'
-];
+const GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+
+La función devuelve `{ text, modelName }` y los endpoints exponen el modelo en `metadata.model` o `model`.
 
 La intención es:
 
+Intentar gemini-2.5-flash-lite
+  ↓ si falla
 Intentar gemini-2.5-flash
-  ↓ si falla
-Intentar gemini-2.5-pro
-  ↓ si falla
-Intentar gemini-2.0-flash
   ↓ si falla
 Devolver error
 Propósito

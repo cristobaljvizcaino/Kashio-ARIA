@@ -32,11 +32,8 @@ const corsHandler = cors({
 // Cache for API key (avoid fetching on every request)
 let cachedApiKey = null;
 
-const GEMINI_MODELS = [
-  'gemini-2.5-flash-lite',
-  'gemini-2.5-flash',
-  'gemini-3.1-flash-lite-preview'
-];
+// Modelos estables (sin preview): evita fallos ruidosos en el último fallback.
+const GEMINI_MODELS = ['gemini-2.5-flash-lite', 'gemini-2.5-flash'];
 
 /**
  * Get Gemini API key from Secret Manager
@@ -61,45 +58,39 @@ async function getGeminiClient() {
 }
 
 /**
- * Intenta generar contenido con múltiples modelos como fallback
- * Si un modelo falla, automáticamente intenta con el siguiente
+ * Intenta generar contenido con múltiples modelos como fallback.
+ * Devuelve { text, modelName } para trazabilidad en respuestas y logs de migración.
  */
 async function generateWithFallback(genAI, prompt, systemInstruction = null) {
   let lastError = null;
-  
+
   for (let i = 0; i < GEMINI_MODELS.length; i++) {
     const modelName = GEMINI_MODELS[i];
-    
+
     try {
       console.log(`🔄 Intentando con modelo ${i + 1}/${GEMINI_MODELS.length}: ${modelName}`);
-      
+
       const modelConfig = { model: modelName };
       if (systemInstruction) {
         modelConfig.systemInstruction = systemInstruction;
       }
-      
+
       const model = genAI.getGenerativeModel(modelConfig);
       const result = await model.generateContent(prompt);
       const text = result.response.text();
-      
+
       console.log(`✅ Éxito con modelo: ${modelName}`);
-      return text;
-      
+      return { text, modelName };
     } catch (error) {
       console.warn(`⚠️ Modelo ${modelName} falló:`, error?.message);
       lastError = error;
-      
-      // Si es el último modelo, lanzar el error
+
       if (i === GEMINI_MODELS.length - 1) {
         throw error;
       }
-      
-      // Continuar con el siguiente modelo
-      continue;
     }
   }
-  
-  // Si llegamos aquí, todos los modelos fallaron
+
   throw lastError || new Error('Todos los modelos de Gemini fallaron');
 }
 
@@ -130,7 +121,7 @@ functions.http('generateArtifact', async (req, res) => {
       const genAI = await getGeminiClient();
       const prompt = `Generate a brief professional outline for a product document titled "${artifactName}" within the "${gateLabel}" gate of a PDLC for a Fintech called Kashio. Keep it to 3 main sections with bullet points.`;
 
-      const content = await generateWithFallback(genAI, prompt);
+      const { text: content, modelName } = await generateWithFallback(genAI, prompt);
 
       res.status(200).json({
         success: true,
@@ -138,6 +129,7 @@ functions.http('generateArtifact', async (req, res) => {
         metadata: {
           artifactName,
           gateLabel,
+          model: modelName,
           timestamp: new Date().toISOString()
         }
       });
@@ -186,7 +178,7 @@ Constraints: ${request.constraints || 'None mentioned'}
 
 Provide a concise 2-sentence ARIA Analysis recommendation. Indicate the PDLC Route (Fast Track, Discovery, or Standard) and the primary gate to start (G0 to G5).`;
 
-      const analysis = await generateWithFallback(genAI, prompt);
+      const { text: analysis, modelName } = await generateWithFallback(genAI, prompt);
 
       res.status(200).json({
         success: true,
@@ -194,6 +186,7 @@ Provide a concise 2-sentence ARIA Analysis recommendation. Indicate the PDLC Rou
         metadata: {
           type: request.type,
           severity: request.severity,
+          model: modelName,
           timestamp: new Date().toISOString()
         }
       });
@@ -234,11 +227,16 @@ functions.http('ariaChat', async (req, res) => {
       const genAI = await getGeminiClient();
       const systemInstruction = `You are ARIA, the Kashio PDLC AI Agent. You are an expert in the Product Development Life Cycle, agile governance, and Kashio's product offerings (Conexión Única, Kashio Cards, etc.). Help users with questions about Gates, SLAs, Artifact generation, and strategic alignment. Keep answers professional, concise, and helpful.`;
 
-      const response = await generateWithFallback(genAI, message, systemInstruction);
+      const { text: response, modelName } = await generateWithFallback(
+        genAI,
+        message,
+        systemInstruction
+      );
 
       res.status(200).json({
         success: true,
         response,
+        model: modelName,
         timestamp: new Date().toISOString()
       });
 

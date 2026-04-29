@@ -201,7 +201,7 @@ El proyecto **`kashio-squad-nova`** tiene **26+ funciones** activas desplegadas 
 
 ### 7.1 Fuente `functions/api/index.js` - Gemini IA
 
-Usa **`@google-cloud/secret-manager`** para obtener la clave Gemini en runtime desde el secreto **`gemini-api-key`** del proyecto **Kashio FinOps** (ruta `projects/${PROJECT_ID}/secrets/gemini-api-key/versions/latest`). El proyecto se resuelve por orden: **`PROJECT_ID`** → **`GOOGLE_CLOUD_PROJECT`** → default **`kashio-finops`** (alfanumérico). Implementa estrategia de fallback entre modelos: `gemini-2.5-flash` -> `gemini-2.5-pro` -> `gemini-2.0-flash`.
+Usa **`@google-cloud/secret-manager`** para obtener la clave Gemini en runtime desde el secreto **`gemini-api-key`** del proyecto **Kashio FinOps** (ruta `projects/${PROJECT_ID}/secrets/gemini-api-key/versions/latest`). El proyecto se resuelve por orden: **`PROJECT_ID`** → **`GOOGLE_CLOUD_PROJECT`** → default **`kashio-finops`** (alfanumérico). Implementa fallback entre **`gemini-2.5-flash-lite`** y **`gemini-2.5-flash`** (sin previews). Las respuestas JSON incluyen **`metadata.model`** o **`model`** según el endpoint.
 
 | Funcion (handler) | Metodo | Descripcion |
 |-------------------|--------|-------------|
