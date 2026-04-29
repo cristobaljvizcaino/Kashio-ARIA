@@ -32,12 +32,10 @@ const corsHandler = cors({
 // Cache for API key (avoid fetching on every request)
 let cachedApiKey = null;
 
-// Lista de modelos a intentar en orden de preferencia (Fallback Strategy)
-// Actualizado 2026-02-12 con modelos verificados como funcionales
 const GEMINI_MODELS = [
-  'gemini-2.5-flash',      // Primario - Estable, rápido (Jun 2025)
-  'gemini-2.5-pro',        // Fallback #1 - Más potente, análisis complejos
-  'gemini-2.0-flash'       // Fallback #2 - Versión anterior estable
+  'gemini-2.5-flash-lite',
+  'gemini-2.5-flash',
+  'gemini-3.1-flash-lite-preview'
 ];
 
 /**
