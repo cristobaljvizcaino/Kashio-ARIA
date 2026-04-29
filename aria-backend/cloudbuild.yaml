@@ -1,0 +1,46 @@
+steps:
+  # Step 1: Build Docker image (independent backend repo)
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '-f'
+      - 'Dockerfile'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/aria-backend:$COMMIT_SHA'
+      - '-t'
+      - 'gcr.io/$PROJECT_ID/aria-backend:latest'
+      - '.'
+
+  # Step 2: Push to Container Registry
+  - name: 'gcr.io/cloud-builders/docker'
+    args: ['push', '--all-tags', 'gcr.io/$PROJECT_ID/aria-backend']
+
+  # Step 3: Deploy to Cloud Run (independent service from frontend)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'aria-backend'
+      - '--image=gcr.io/$PROJECT_ID/aria-backend:latest'
+      - '--region=us-central1'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--min-instances=1'
+      - '--max-instances=10'
+      - '--memory=1Gi'
+      - '--cpu=1'
+      - '--port=8080'
+      - '--timeout=300'
+      - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,ConnectionString_Karia=aria-database-url:latest'
+      - '--set-env-vars=SERVICE_BASE_PATH=/karia-svc/v2'
+
+images:
+  - 'gcr.io/$PROJECT_ID/aria-backend:$COMMIT_SHA'
+  - 'gcr.io/$PROJECT_ID/aria-backend:latest'
+
+options:
+  machineType: 'E2_HIGHCPU_8'
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: '1200s'

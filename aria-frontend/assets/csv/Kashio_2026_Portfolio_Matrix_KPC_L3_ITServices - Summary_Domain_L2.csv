@@ -1,0 +1,34 @@
+L1 Domain,L2 Capability,Projects,Squads,Portfolios,States
+Blockchain,Tokenization & Settlement,1,Nova,Strat Bets,Pendiente
+Connectivity & Partners,Bank Connectivity,1,SQ3,Servicio,En curso
+Connectivity & Partners,Rail/PSP Onboarding,1,SQ 4,Rails & Integration,Definición
+Customer Lifecycle,Customer Portal,1,Nova,Plataforma,Definición
+Customer Lifecycle,Onboarding Operations,1,Nova,Plataforma,Definición
+Data & AI,AI Agentic Framework,1,SQ AI,AI Initiatives,Pendiente
+Data & AI,AI Content Pipelines,2,SQ AI,AI Initiatives,"En Diseño, Pendiente"
+Data & AI,AI Product Tooling,1,SQ AI,AI Initiatives,Pendiente
+Data & AI,Product Data Platform,1,SQ AI,AI Initiatives,Pendiente
+Developer Platform,SDK Management,2,SQ 4,AI Initiatives,En Curso
+Expansion,Country Enablement,14,"SQ 2, SQ 4, SQ4, SQ4, SQ1, SQ4, SQ2",Rails & Integration,"En Curso, Pendiente"
+Expansion,Portfolio by Country,1,TBD,ProductOps,Pendiente
+Financial Operations,Collections Management,1,Nova,VAR,Definición
+Financial Operations,Ledger & Accounting,1,Nova,Core,Definición
+Financial Operations,Reconciliation Management,1,SQ 2,VAR,Definición
+Integrations,ERP Integration,1,Nova,Core,Definición
+Observability & Governance,Change Governance,1,SQ AI,ProductOps,Pendiente
+Observability & Governance,Monitoring & Reporting,1,SQ 4,Rails & Integration,Pendiente
+Observability & Governance,Product Operations,1,SQ AI,ProductOps,Pendiente
+Payments,Card Acquiring,1,Nova,Strat Bets,Pendiente
+Payments,Collections (Pay-in),1,SQ2,VAR,Definición
+Payments,Payin Orchestration,1,SQ 4,AI Initiatives,En Curso
+Payments,Payin Reliability,1,SQ2,Plataforma,En curso
+Payments,Payout Orchestration,1,SQ 4,AI Initiatives,En Curso
+Payments,Payout Reliability,1,SQ3,Plataforma,En curso
+Payments,Payout Routing,1,SQ 4,PriceOps,En Curso
+Platform,Design System,1,Nova,AI Initiatives,Pendiente
+Platform,Enterprise Services,1,TBD,Strat Bets,Pendiente
+Platform,Matching Engine,1,Nova,AI Initiatives,Pendiente
+PriceOps,Rail COGS & Pricing,2,"SQ 4, TBD","PriceOps, Rails & Integration",Pendiente
+RiskOps,Fraud Management,1,SQ2,Servicio,En curso
+RiskOps,Identity & Validation,1,SQ3,VAR,En curso
+RiskOps,Risk Governance,1,TBD,RiskOps,Pendiente

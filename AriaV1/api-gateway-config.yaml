@@ -1,0 +1,41 @@
+swagger: '2.0'
+info:
+  title: ARIA API Gateway
+  description: Public API Gateway for ARIA Cloud Functions
+  version: 1.0.0
+schemes:
+  - https
+produces:
+  - application/json
+paths:
+  /generateArtifact:
+    post:
+      summary: Generate artifact content
+      operationId: generateArtifact
+      x-google-backend:
+        address: https://us-central1-kashio-squad-nova.cloudfunctions.net/generateArtifact
+        jwt_audience: https://us-central1-kashio-squad-nova.cloudfunctions.net/generateArtifact
+      responses:
+        '200':
+          description: Success
+  /analyzeIntake:
+    post:
+      summary: Analyze intake request
+      operationId: analyzeIntake
+      x-google-backend:
+        address: https://us-central1-kashio-squad-nova.cloudfunctions.net/analyzeIntake
+        jwt_audience: https://us-central1-kashio-squad-nova.cloudfunctions.net/analyzeIntake
+      responses:
+        '200':
+          description: Success
+  /ariaChat:
+    post:
+      summary: Chat with ARIA
+      operationId: ariaChat
+      x-google-backend:
+        address: https://us-central1-kashio-squad-nova.cloudfunctions.net/ariaChat
+        jwt_audience: https://us-central1-kashio-squad-nova.cloudfunctions.net/ariaChat
+      responses:
+        '200':
+          description: Success
+

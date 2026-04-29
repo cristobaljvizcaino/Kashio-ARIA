@@ -1,0 +1,5 @@
+{
+  "name": "Kashio ARIA PDLC Control Center",
+  "description": "An enterprise-grade governance module for managing the Product Development Life Cycle (PDLC) with AI-driven artifact generation, HITL workflows, and multi-platform publishing.",
+  "requestFramePermissions": []
+}
