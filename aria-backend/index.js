@@ -3,6 +3,11 @@
  * Serves static React app + API endpoints for Library
  */
 
+require('dotenv').config({
+  path: require('path').join(__dirname, '.env'),
+  quiet: true,
+});
+
 const express = require('express');
 const cors = require('cors');
 const { Storage } = require('@google-cloud/storage');
@@ -18,7 +23,8 @@ const port = process.env.PORT || 8080;
 
 // Initialize Cloud Storage
 const storage = new Storage();
-const BUCKET_NAME = 'aria-library-files';
+/** Bucket GCS de biblioteca; FinOps usa `karia-library-files`. Override con `GCS_BUCKET_NAME`. */
+const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'karia-library-files';
 const bucket = storage.bucket(BUCKET_NAME);
 
 // Middleware
@@ -586,7 +592,7 @@ routes.get('/health', (req, res) => {
 routes.use(express.static(path.join(__dirname, 'dist')));
 
 // All other routes serve React app
-routes.get('*', (req, res) => {
+routes.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, 'dist/index.html'));
 });
 
@@ -599,15 +605,13 @@ if (SERVICE_BASE_PATH) {
 app.use(mountPath, routes);
 
 app.listen(port, async () => {
-  console.log(`🚀 ARIA Server running on port ${port}`);
-  if (SERVICE_BASE_PATH) {
-    console.log(`📍 API bajo prefijo: ${SERVICE_BASE_PATH} (ej. ${SERVICE_BASE_PATH}/api/...)`);
-  }
+  const host = process.env.HOST || 'localhost';
+  console.log(`Servidor: http://${host}:${port}`);
   if (process.env.ConnectionString_Karia) {
     const dbStatus = await testConnection();
-    console.log('🔌 Database:', dbStatus.success ? 'Connected' : 'Not connected - ' + dbStatus.error);
+    console.log(dbStatus.success ? 'Base de datos: conectada' : `Base de datos: no disponible (${dbStatus.error})`);
   } else {
-    console.log('⚠️ ConnectionString_Karia not set — database features disabled, using localStorage fallback');
+    console.log('Base de datos: no configurada');
   }
 });
 

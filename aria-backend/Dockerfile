@@ -3,13 +3,13 @@
 #
 #   docker build -t aria-backend .
 #
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Install only production dependencies
 COPY package*.json ./
-RUN npm ci --only=production && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy application source
 COPY index.js ./index.js

@@ -17,12 +17,14 @@ Se creó una **base de datos NUEVA (vacía)** para la versión 2 (`aria-backend`
 
 ## Google Cloud Storage (catálogo de ficheros)
 
-El backend Express usa el bucket **`aria-library-files`** (`index.js`, constante `BUCKET_NAME`). Los blobs **no** viven en PostgreSQL; viven en **GCS**. La tabla **`library_file`** sirve como **índice de metadatos** (URL `gs://…`, nombre, tipo, categoría, gate, etc.) alineada con lo que muestra la UI (“Cargar Archivo” → Contexto / Prompt / Template / Output).
+El backend Express usa el bucket de biblioteca configurado por **`GCS_BUCKET_NAME`** (por defecto **`karia-library-files`**) en el proyecto GCP **Kashio FinOps** (selector de consola: **`Kashio-Finops`**). Antes se documentaba el bucket `aria-library-files` en el proyecto squad/nova; la migración FinOps centraliza el depósito con el prefijo **Karia**. Los blobs **no** viven en PostgreSQL; viven en **GCS**. La tabla **`library_file`** sirve como **índice de metadatos** (URL `gs://…`, nombre, tipo, categoría, gate, etc.) alineada con lo que muestra la UI (“Cargar Archivo” → Contexto / Prompt / Template / Output).
 
 ### Estructura de carpetas (objeto = `path` dentro del bucket)
 
+Vista real en consola (abril 2026): bajo **`Template/`** conviven plantillas Markdown (`lib-{timestamp}-Plantilla_…`, `Artefacto_…`) y PDFs; **`Output/`** incluye subcarpetas por gate (**G1**–**G5**; **G0** cuando aplica publicación desde ARIA).
+
 ```
-aria-library-files/
+karia-library-files/
 ├── Contexto/                    # Subidas UI categoría "Contexto"
 │   └── lib-{timestamp}-{nombreArchivo}
 ├── Prompt/                      # Categoría "Prompt"
@@ -44,7 +46,7 @@ aria-library-files/
 | `POST /api/artifacts/publish-pdf` | `Output/{gate}/{fileId}.pdf` | Metadatos en cabeceras HTTP. |
 | `GET /api/library/files` | Todo el bucket | Agrupa versiones `.md` bajo `Output/` y lista el resto como fuentes. |
 
-**Regla de integridad con `library_file`:** cada vez que un flujo confirme un objeto en GCS, conviene **INSERT/UPDATE** en `library_file` con el mismo `storage_url` (`gs://aria-library-files/...`) y `file_name` / `file_type` / `gate` coherentes. Hoy **`index.js` no escribe en `library_file`**; la tabla está lista para una integración rápida en los mismos endpoints.
+**Regla de integridad con `library_file`:** cada vez que un flujo confirme un objeto en GCS, conviene **INSERT/UPDATE** en `library_file` con el mismo `storage_url` (`gs://karia-library-files/...` u otro valor de `GCS_BUCKET_NAME`) y `file_name` / `file_type` / `gate` coherentes. Hoy **`index.js` no escribe en `library_file`**; la tabla está lista para una integración rápida en los mismos endpoints.
 
 ---
 
@@ -216,7 +218,7 @@ psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
 ```
  GCS (siempre)                         PostgreSQL BD nueva (4 tablas)
 ┌─────────────────────────┐           ┌──────────────────────────────┐
-│ aria-library-files/     │           │ initiative                   │
+│ karia-library-files/    │           │ initiative                   │
 │  Contexto/ Prompt/ …    │  ◀──────▶ │ intake_request               │
 │  Output/G0 … G5/        │  (futuro  │ artifact_definition          │
 │                         │   sync)  │ library_file                 │

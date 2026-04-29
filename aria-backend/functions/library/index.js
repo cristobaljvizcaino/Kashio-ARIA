@@ -1,7 +1,7 @@
 /**
  * Cloud Functions for ARIA Library
  * 
- * Handles file operations for aria-library-files bucket
+ * Handles file operations for the library GCS bucket (default: karia-library-files; override GCS_BUCKET_NAME)
  */
 
 const functions = require('@google-cloud/functions-framework');
@@ -9,7 +9,7 @@ const { Storage } = require('@google-cloud/storage');
 const cors = require('cors')({ origin: true });
 
 const storage = new Storage();
-const BUCKET_NAME = 'aria-library-files';
+const BUCKET_NAME = process.env.GCS_BUCKET_NAME || 'karia-library-files';
 const bucket = storage.bucket(BUCKET_NAME);
 
 /**

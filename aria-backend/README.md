@@ -2,14 +2,14 @@
 
 API Express independiente del portal ARIA (Kashio). Este repositorio es **totalmente autocontenido** y se despliega de forma independiente del frontend (`aria-frontend`) en Google Cloud Run.
 
-**Referencia backend:** [docs/BACKEND_REFERENCE.md](docs/BACKEND_REFERENCE.md) · **BD v2 + GCS + DDL:** [docs/DATABASE_AUDIT.md](docs/DATABASE_AUDIT.md).
+**Referencia backend:** [docs/BACKEND_REFERENCE.md](docs/BACKEND_REFERENCE.md) · **BD v2 + GCS + DDL:** [docs/DATABASE_AUDIT.md](docs/DATABASE_AUDIT.md) · **Mejoras / roadmap:** [docs/mejoras.md](docs/mejoras.md).
 
 ## Estructura
 
 ```
 aria-backend/
 ├── index.js              # Servidor Express (API principal)
-├── db.js                 # Conexión PostgreSQL (Cloud SQL)
+├── db.js                 # Pool PostgreSQL (URI + opciones TLS)
 ├── package.json          # Dependencias del servicio
 ├── Dockerfile            # Imagen para Cloud Run
 ├── cloudbuild.yaml       # Pipeline de CI/CD (GCP Cloud Build)
@@ -19,7 +19,7 @@ aria-backend/
 │   ├── api/              # Funciones HTTP (Gemini / APIs generales)
 │   ├── library/          # Funciones de la biblioteca de artefactos
 │   └── storage/          # Utilidades de Cloud Storage
-└── migrations/           # SQL Cloud SQL (003 = esquema v2 recomendado)
+└── migrations/           # SQL PostgreSQL (003 = esquema v2 recomendado)
     ├── squema.db           # volcado de referencia (v1)
     └── 003_v2_four_tables.sql
 ```
@@ -27,7 +27,7 @@ aria-backend/
 ## Requisitos
 
 - Node.js 18+
-- Cuenta de Google Cloud con Cloud Run, Cloud SQL (PostgreSQL) y Cloud Storage habilitados
+- Cuenta de Google Cloud con Cloud Run, PostgreSQL (conexión directa) y Cloud Storage; biblioteca migrada en proyecto **Kashio FinOps**, bucket **`karia-library-files`** (ver `BACKEND_REFERENCE.md`)
 - `gcloud` CLI autenticado
 
 ## Variables de entorno
@@ -35,8 +35,11 @@ aria-backend/
 | Variable         | Uso                                                  |
 |------------------|------------------------------------------------------|
 | `PORT`           | Puerto HTTP (por defecto `8080`)                     |
-| `ConnectionString_Karia` | URI PostgreSQL (`postgresql://…`) para Cloud SQL, Supabase, local, etc. |
+| `ConnectionString_Karia` | URI PostgreSQL (`postgresql://…`) — conexión directa al servidor. |
+| `DB_SSL_CA` | Opcional. Ruta a PEM del CA del proveedor (TLS verificado). |
+| `DB_SSL_REJECT_UNAUTHORIZED` | Opcional. `false` desactiva verificación del certificado (solo dev / red de confianza). |
 | `SERVICE_BASE_PATH`     | Opcional. Prefijo ingress (p. ej. `/karia-svc/v2`). Cloud Build lo fija por defecto. |
+| `GCS_BUCKET_NAME`       | Opcional. Bucket de biblioteca (default **`karia-library-files`** en FinOps). `cloudbuild.yaml` lo inyecta en Cloud Run. |
 | `GEMINI_API_KEY` | API key de Gemini para los endpoints de generación   |
 
 En Cloud Run se inyectan vía `--set-secrets` (ver `cloudbuild.yaml`).

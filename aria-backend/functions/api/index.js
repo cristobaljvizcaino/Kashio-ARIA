@@ -9,13 +9,16 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import cors from 'cors';
 
-// Initialize Secret Manager
 const secretClient = new SecretManagerServiceClient();
-const PROJECT_ID = 'kashio-squad-nova';
+const PROJECT_ID =
+  process.env.PROJECT_ID ||
+  process.env.GOOGLE_CLOUD_PROJECT ||
+  'kashio-finops';
 
 // CORS configuration
 const corsHandler = cors({
   origin: [
+    'https://karia-ui-app-476648227615.us-east4.run.app',
     'https://aria-frontend-ih5a4tpiua-uc.a.run.app',
     'https://aria-frontend-215989210525.us-central1.run.app',
     'https://aria-control-center.vercel.app',
@@ -44,7 +47,7 @@ async function getGeminiApiKey() {
   if (cachedApiKey) return cachedApiKey;
 
   const [version] = await secretClient.accessSecretVersion({
-    name: `projects/${PROJECT_ID}/secrets/gemini-api-key/versions/latest`
+    name: `projects/${PROJECT_ID}/secrets/gemini-api-key/versions/latest`,
   });
 
   cachedApiKey = version.payload.data.toString();
