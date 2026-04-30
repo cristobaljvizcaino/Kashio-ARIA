@@ -40,13 +40,14 @@ La carpeta **`functions/`** está en **`.dockerignore`**: no se copia al build d
 
 ## 3. Mapa Google Cloud (con que esta "conectado"?)
 
-Region habitual: **`us-central1`**. Intervienen **dos proyectos GCP**: **Kashio FinOps** (bucket + secreto Gemini) y **`kashio-squad-nova`** (muchas Cloud Functions y otros secretos legacy; ver §7 y §10).
+Region habitual: **`us-central1`**. **Tras la migración 2026-04, todas las 8 Cloud Run Functions activas viven en Kashio FinOps (`Kashio-Finops`)**: 4 IA + utilidades (`functions/api`) y 4 biblioteca (`functions/library`). El proyecto legacy **`kashio-squad-nova`** queda como referencia histórica para secretos de integración (§10) y funciones legacy aún no migradas.
 
 | Rol | Proyecto (consola) | Notas |
 |-----|-------------------|--------|
 | **Biblioteca y artefactos (GCS)** | **Kashio FinOps** — **`Kashio-Finops`** | Bucket **`karia-library-files`**, **us-central1 (Iowa)**, clase **Standard**, **no publico**. Estructura: `Contexto/`, `Prompt/`, `Template/`, `Output/` (subcarpetas por gate). Sustituye el antiguo bucket **`aria-library-files`** en el flujo migrado. |
 | **Secret Manager — clave Gemini** | **Kashio FinOps** — **`Kashio-Finops`** | Secreto **`gemini-api-key`**, versión **1**, estado **Habilitada**, cifrado administrado por Google. Ruta `projects/kashio-finops/secrets/gemini-api-key`. Es la fuente de verdad para la API de Gemini (consumida por `functions/api` y opcionalmente por Cloud Run vía `--set-secrets`). |
-| **Cloud Functions (URLs históricas) + otros secretos** | **`kashio-squad-nova`** | URLs `https://us-central1-kashio-squad-nova.cloudfunctions.net/...`. Otros secretos de integración pueden seguir aquí; **`functions/api`** lee `gemini-api-key` desde FinOps (ver §10 y variable **`GEMINI_SECRET_PROJECT_ID`** en código). |
+| **Cloud Run Functions (8 endpoints activos)** | **Kashio FinOps** — **`Kashio-Finops`** | URLs con formato `https://{nombre}-476648227615.us-central1.run.app`. 4 IA: `health`, `ariachat`, `generateartifact`, `analyzeintake`. 4 Library: `getlibraryfiles`, `getlibraryuploadurl`, `downloadlibraryfile`, `deletelibraryfile`. Catálogo completo con bodies y ejemplos en **`docs/DEPLOYED_ENDPOINTS.md`**. |
+| **Cloud Functions legacy + otros secretos** | **`kashio-squad-nova`** | URLs históricas `https://us-central1-kashio-squad-nova.cloudfunctions.net/...` (CRUD legacy aún allí; ver §7.3). Algunos secretos de integración (Bitbucket, GitLab, Confluence, IT-KResolve) siguen aquí; consultar §10. |
 
 **Nombre del bucket:** el **ID de recurso en GCP** es **`karia-library-files`** (globally unique, en minusculas). Si en reuniones o specs aparece un nombre tipo **"Cloud ARIA Library files"**, debe mapearse a ese ID. En runtime se puede sobreescribir con **`GCS_BUCKET_NAME`** (ver §8.1).
 
@@ -69,9 +70,17 @@ Region habitual: **`us-central1`**. Intervienen **dos proyectos GCP**: **Kashio 
                                +------------------------+
 
 +----------------------------------------------------------------------+
-|  Cloud Run Functions (26+ funciones - ver S7)                        |
-|  Proyecto tipico hoy: kashio-squad-nova  Region: us-central1         |
-|  * CRUD, biblioteca serverless, IA (Gemini)                          |
+|  Cloud Run Functions ACTIVAS - 8 endpoints (ver S7 y DEPLOYED_*.md)  |
+|  Proyecto: Kashio-Finops   Region: us-central1                       |
+|  * 4 API/IA: health, ariachat, generateartifact, analyzeintake       |
+|  * 4 Library: get/upload/download/delete LibraryFile(s)              |
+|  URLs: https://{nombre}-476648227615.us-central1.run.app             |
++----------------------------------------------------------------------+
+
++----------------------------------------------------------------------+
+|  Cloud Functions LEGACY (kashio-squad-nova - ver S7.3)               |
+|  CRUD historico aun no migrado (createinitiative, getall*, etc.)     |
+|  URLs: us-central1-kashio-squad-nova.cloudfunctions.net/...          |
 +----------------------------------------------------------------------+
 
 +----------------------------------------------------------------------+
@@ -197,33 +206,52 @@ Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete*
 
 ## 7. Cloud Functions en `functions/` y funciones desplegadas en Cloud Run
 
-El proyecto **`kashio-squad-nova`** tiene **26+ funciones** activas desplegadas como **Cloud Run Functions** en `us-central1`. Cada una tiene su propia URL y requiere autenticacion. Las fuentes en este repositorio son `functions/api/index.js` y `functions/library/index.js`; el resto fue desplegado de forma independiente.
+**Estado actual (2026-04, post-migración):** las **8 funciones HTTP activas del backend** viven en **Kashio-Finops** (`us-central1`), con URLs de la forma `https://{nombre}-476648227615.us-central1.run.app`. Las fuentes en este repositorio son `functions/api/index.js` (4 funciones IA) y `functions/library/index.js` (4 funciones biblioteca). El proyecto legacy **`kashio-squad-nova`** mantiene CRUD histórico aún no migrado (ver §7.3).
 
-### 7.1 Fuente `functions/api/index.js` - Gemini IA
+> **Catálogo operativo completo** (URLs, métodos, bodies, query params, ejemplos curl): **`docs/DEPLOYED_ENDPOINTS.md`**.
+
+### 7.1 Fuente `functions/api/index.js` - Gemini IA (4 funciones en Kashio-Finops)
 
 Usa **`@google-cloud/secret-manager`** para obtener la clave Gemini en runtime desde el secreto **`gemini-api-key`** del proyecto **Kashio FinOps** (ruta `projects/${PROJECT_ID}/secrets/gemini-api-key/versions/latest`). El proyecto se resuelve por orden: **`PROJECT_ID`** → **`GOOGLE_CLOUD_PROJECT`** → default **`kashio-finops`** (alfanumérico). Implementa fallback entre **`gemini-2.5-flash-lite`** y **`gemini-2.5-flash`** (sin previews). Las respuestas JSON incluyen **`metadata.model`** o **`model`** según el endpoint.
 
-| Funcion (handler) | Metodo | Descripcion |
-|-------------------|--------|-------------|
-| `generateArtifact` | POST | Genera un outline profesional para un artefacto PDLC dado su nombre y gate (G0-G5). Usa Gemini con contexto de Kashio Fintech. |
-| `analyzeIntake` | POST | Analiza un intake request (tipo, severidad, problema, resultado esperado) y devuelve recomendacion de ruta PDLC (Fast Track / Discovery / Standard) y gate de entrada. |
-| `ariaChat` | POST | Chatbot ARIA: recibe mensaje e historial, responde como agente experto en PDLC de Kashio (Gates, SLAs, artefactos, alineacion estrategica). |
-| `health` | GET | Estado del servicio `aria-api-functions`. |
+**CORS configurado:** orígenes Karia (`karia-ui-app-*us-east4`, `aria-frontend-*`, `aria-control-center.vercel.app`, `localhost:3000`, `localhost:8082`), métodos `GET, POST, OPTIONS`, `credentials: true`.
 
-### 7.2 Fuente `functions/library/index.js` - Biblioteca GCS
+| Funcion (handler) | Service name | URL desplegada | Método | Descripcion |
+|-------------------|--------------|----------------|--------|-------------|
+| `health` | `health` | `https://health-476648227615.us-central1.run.app` | GET | Estado del servicio `aria-api-functions`. |
+| `ariaChat` | `ariachat` | `https://ariachat-476648227615.us-central1.run.app` | POST | Chatbot ARIA: recibe `{ message, history }` y responde como agente experto en PDLC de Kashio (Gates, SLAs, artefactos, alineacion estrategica). |
+| `generateArtifact` | `generateartifact` | `https://generateartifact-476648227615.us-central1.run.app` | POST | Body `{ artifactName, gateLabel }`. Genera un outline profesional para un artefacto PDLC dado su nombre y gate (G0-G5). Usa Gemini con contexto de Kashio Fintech. |
+| `analyzeIntake` | `analyzeintake` | `https://analyzeintake-476648227615.us-central1.run.app` | POST | Body `{ request: { type, severity, problem, outcome, scope, constraints } }`. Analiza un intake y devuelve recomendacion de ruta PDLC (Fast Track / Discovery / Standard) y gate de entrada. |
 
-Operaciones directas sobre el mismo bucket de biblioteca (por defecto **`karia-library-files`**). Alternativa a los mismos endpoints de Express en `index.js`.
+### 7.2 Fuente `functions/library/index.js` - Biblioteca GCS (4 funciones en Kashio-Finops)
 
-| Funcion (handler) | Metodo | Descripcion |
-|-------------------|--------|-------------|
-| `getLibraryFiles` | GET | Lista todos los archivos del bucket con metadatos (categoria, tamano, fecha, contentType). |
-| `getLibraryUploadUrl` | POST | Genera URL firmada de subida (V4, 15 min) para `{category}/lib-{timestamp}-{filename}`. |
-| `downloadLibraryFile` | GET | Genera URL firmada de lectura (V4, 15 min) dado un `fileId`. |
-| `deleteLibraryFile` | DELETE | Elimina un objeto del bucket dado su `fileId`. |
+Operaciones directas sobre el bucket de biblioteca (por defecto **`karia-library-files`**). Alternativa a los mismos endpoints de Express en `index.js`.
 
-### 7.3 Funciones CRUD adicionales desplegadas en Cloud Run (kashio-squad-nova)
+**CORS configurado:** orígenes (`karia-ui-app-*us-east4`, `localhost:3000`, `localhost:8082`), métodos `GET, POST, DELETE, OPTIONS`, `credentials: true`.
 
-Las siguientes funciones estan desplegadas y activas como Cloud Run Functions independientes. No forman parte de la imagen Docker del backend Express; cada una tiene su propio endpoint HTTPS con autenticacion requerida.
+**Hardening aplicado en esta migración** (ver `functions/library/index.js`):
+
+| Cambio | Antes | Después | Por qué |
+|--------|-------|---------|---------|
+| Identificación de archivo | `req.params[0].replace('/downloadLibraryFile/', '')` | `req.query.filePath \|\| req.body?.filePath` | En Cloud Run Functions `req.params[0]` puede venir `undefined` y crashea con `Cannot read properties of undefined`. |
+| Búsqueda en bucket | `files.find(f => f.name.includes(fileId))` (lista todo el bucket) | `bucket.file(filePath)` + `file.exists()` (acceso directo) | Evita falsos positivos por sub-cadenas (`123` matchearía con `9123`) y evita listar todo el bucket. |
+| CORS | `origin: true` (cualquier dominio) | Lista explícita de orígenes Karia | Hardening de seguridad. |
+| Validación de categoría | (no había) | `isAllowedCategory()` en upload y list (`Contexto`, `Output`, `Prompt`, `Template`) | Evita escrituras a prefijos no canónicos. |
+| Sanitización de nombre | (no había) | `sanitizeFileName()` antes de armar `fileId` | Evita backslashes/slashes/espacios extraños en GCS. |
+| Filtro de directorios | (no había) | `.filter(file => !file.name.endsWith('/'))` en `getLibraryFiles` | Excluye placeholders de carpetas vacías. |
+
+| Funcion (handler) | Service name | URL desplegada | Método | Input clave |
+|-------------------|--------------|----------------|--------|-------------|
+| `getLibraryFiles` | `getlibraryfiles` | `https://getlibraryfiles-476648227615.us-central1.run.app` | GET | Query `?category=` opcional. Devuelve `[{id, filePath, name, category, size, ...}]`. |
+| `getLibraryUploadUrl` | `getlibraryuploadurl` | `https://getlibraryuploadurl-476648227615.us-central1.run.app` | POST | Body `{ filename, category, contentType? }`. Devuelve `{ signedUrl, fileId, filePath, bucket, expiresInMinutes }`. URL V4, 15 min. |
+| `downloadLibraryFile` | `downloadlibraryfile` | `https://downloadlibraryfile-476648227615.us-central1.run.app` | GET / POST | `?filePath=` o body `{ filePath }`. Devuelve URL firmada de lectura V4, 15 min. |
+| `deleteLibraryFile` | `deletelibraryfile` | `https://deletelibraryfile-476648227615.us-central1.run.app` | DELETE / POST | `?filePath=` o body `{ filePath }`. |
+
+> **Cambio de contrato:** los endpoints de download/delete ahora reciben **`filePath`** completo (ej. `Template/lib-1730301800-Plan_Producto.pdf`), **no** `fileId` solo. El front debe usar el campo `filePath` que devuelve `getLibraryFiles` en cada item.
+
+### 7.3 Funciones CRUD legacy en `kashio-squad-nova` (no migradas a FinOps)
+
+Las siguientes funciones siguen desplegadas en el proyecto **legacy `kashio-squad-nova`** (URLs `https://us-central1-kashio-squad-nova.cloudfunctions.net/...`) y **no fueron migradas a Kashio-Finops** en la migración de 2026-04. No forman parte de la imagen Docker del backend Express; cada una tiene su propio endpoint HTTPS con autenticacion requerida. Algunas son equivalentes de las 8 ya migradas (a desactivar o redirigir cuando se complete la migración del CRUD).
 
 | Nombre en Cloud Run | Descripcion funcional |
 |---------------------|-----------------------|
@@ -256,33 +284,57 @@ Las siguientes funciones estan desplegadas y activas como Cloud Run Functions in
 
 > **Nota:** las funciones con icono de advertencia en la consola Cloud Run (senaladas con triangulo amarillo) pueden tener una revision pendiente de despliegue o una variable de entorno no configurada en esa revision. Las funciones en si estan activas y responden.
 
-### 7.4 Prueba manual de funciones protegidas por IAM (ejemplo `ariaChat`)
+### 7.4 Prueba manual de funciones (Kashio-Finops)
 
-Las funciones desplegadas en `us-central1-kashio-squad-nova.cloudfunctions.net` suelen exigir **autenticación**. Para que una prueba funcione hacen falta **cuatro cosas**:
-
-1. **Método `POST`** (no basta abrir la URL en el navegador).
-2. **`Authorization: Bearer <token>`** — token de identidad de Google (`gcloud auth print-identity-token`). El encabezado puede ir como `Bearer` o `bearer`; GCP lo acepta.
-3. **`Content-Type: application/json`**
-4. **Cuerpo JSON** con al menos **`message`** (y opcionalmente **`history`**, p. ej. `[]`).
-
-**Comando de referencia** (terminal local o Cloud Shell, con `gcloud` autenticado):
+Las **8 funciones migradas a Kashio-Finops** tienen el patrón de URL `https://{nombre}-476648227615.us-central1.run.app`. Hoy están desplegadas con `--allow-unauthenticated` (para validación end-to-end), por lo que un curl simple basta:
 
 ```bash
-curl -X POST "https://us-central1-kashio-squad-nova.cloudfunctions.net/ariaChat" \
+# Smoke test
+curl "https://health-476648227615.us-central1.run.app"
+
+# Chat ARIA
+curl -X POST "https://ariachat-476648227615.us-central1.run.app" \
+  -H "Content-Type: application/json" \
+  -d '{"message":"Hola ARIA, dime qué haces.","history":[]}'
+
+# Listar archivos de biblioteca
+curl "https://getlibraryfiles-476648227615.us-central1.run.app?category=Template"
+```
+
+**Para producción** se debe retirar `--allow-unauthenticated` y exigir IAM. En ese caso hacen falta **cuatro cosas**:
+
+1. **Método correcto** (POST para `ariaChat`, `generateArtifact`, `analyzeIntake`, `getLibraryUploadUrl`; GET/DELETE para los demás).
+2. **`Authorization: Bearer <token>`** — token de identidad de Google (`gcloud auth print-identity-token`). El encabezado acepta `Bearer` o `bearer`.
+3. **`Content-Type: application/json`** (en endpoints POST con body).
+4. **Cuerpo JSON** con los campos requeridos (ver `docs/DEPLOYED_ENDPOINTS.md`).
+
+**Comando de referencia con IAM activado:**
+
+```bash
+curl -X POST "https://ariachat-476648227615.us-central1.run.app" \
   -H "Authorization: bearer $(gcloud auth print-identity-token)" \
   -H "Content-Type: application/json" \
   -d '{"message":"Hola ARIA, dime que haces.","history":[]}'
 ```
 
-**Por qué el navegador muestra 403:** al pegar solo la URL, el navegador hace **GET** y no envía token; la función espera **POST** + Bearer.
+**Por qué el navegador muestra 403** (cuando IAM esté activo): al pegar solo la URL, el navegador hace **GET** y no envía token; la función espera **POST** + Bearer.
 
-**Check verde funcional:** respuesta HTTP **200** y en logs de la función un mensaje tipo **`Chat response generated`** (o el cuerpo JSON con `success: true` y el texto en `response`). Eso confirma que Gemini respondió tras leer la clave desde Secret Manager.
+**Check verde funcional:** respuesta HTTP **200** y en logs un mensaje tipo `✅ Éxito con modelo: gemini-2.5-flash-lite` o el cuerpo JSON con `success: true` y el texto en `response`. Eso confirma que Gemini respondió tras leer la clave desde Secret Manager.
 
-El mismo patrón (POST + Bearer + JSON) aplica a **`generateArtifact`**, **`analyzeIntake`** y al resto de funciones que tengan *Require authentication* en Cloud Run/Functions.
+El mismo patrón aplica a las funciones legacy de `kashio-squad-nova` (§7.3) que mantienen *Require authentication*.
 
-### 7.5 Plan de redespliegue en **Kashio FinOps** (Cloud Run Functions Gen 2, Node 22)
+### 7.5 Despliegue en **Kashio FinOps** (Cloud Run Functions Gen 2, Node 22) — ✅ ejecutado
 
-Solo se redespliegan **4 funciones IA + health** (`functions/api`). El paquete **`functions/library`** queda como **legacy / no se redespliega**: la biblioteca pasa a Express (ver `docs/mejoras.md`).
+**Estado:** las **8 funciones (4 IA + 4 Library)** quedaron desplegadas en **Kashio-Finops** en `us-central1`. URLs vivas:
+
+- `https://health-476648227615.us-central1.run.app`
+- `https://ariachat-476648227615.us-central1.run.app`
+- `https://generateartifact-476648227615.us-central1.run.app`
+- `https://analyzeintake-476648227615.us-central1.run.app`
+- `https://getlibraryfiles-476648227615.us-central1.run.app`
+- `https://getlibraryuploadurl-476648227615.us-central1.run.app`
+- `https://downloadlibraryfile-476648227615.us-central1.run.app`
+- `https://deletelibraryfile-476648227615.us-central1.run.app`
 
 #### A. Cambios obligatorios ya aplicados en código
 
@@ -291,19 +343,22 @@ Solo se redespliegan **4 funciones IA + health** (`functions/api`). El paquete *
 | `PROJECT_ID` | Resolución dinámica: `process.env.PROJECT_ID || GOOGLE_CLOUD_PROJECT || 'kashio-finops'` (antes hardcoded a `kashio-squad-nova`). |
 | Runtime | `package.json` (`engines.node = ">=22"`); usar **`--runtime=nodejs22`** en `gcloud functions deploy` (Cloud Functions Gen 2 acepta `nodejs20`, `nodejs22`, `nodejs24`). El backend Express en Docker usa **`node:24-alpine`**. |
 | `package.json` (`functions/api`) | `@google-cloud/functions-framework ^5.0.2`, `@google-cloud/secret-manager ^6.1.1`, `@google/generative-ai ^0.24.1`, `cors ^2.8.6`. `"type": "module"` (porque `index.js` usa `import`). |
+| `functions/library/index.js` (hardening 2026-04) | Reemplazo de `req.params[0]` por `req.query.filePath \|\| req.body?.filePath`; reemplazo de `files.find(includes)` por `bucket.file(filePath) + exists()`; CORS restringido a orígenes Karia; validación `isAllowedCategory()` y `sanitizeFileName()`. Detalle en §7.2. |
 | Bucket | `GCS_BUCKET_NAME=karia-library-files` (FinOps). |
 
 #### B. IAM previo
 
-- Cuenta de servicio de ejecución de las funciones con rol **Secret Manager Secret Accessor** sobre `projects/kashio-finops/secrets/gemini-api-key`.
-- Si el bucket vive en otro proyecto, también **Storage Object Admin** sobre `karia-library-files`.
+- Cuenta de servicio de ejecución de las funciones con rol **Secret Manager Secret Accessor** sobre `projects/kashio-finops/secrets/gemini-api-key` (solo para `functions/api`).
+- Cuenta de servicio con **Storage Object Admin** sobre `karia-library-files` (para `functions/library` y para `functions/api` si firma URLs).
 
 #### C. Visibilidad recomendada
 
-- **Pruebas:** desplegar con `--allow-unauthenticated` para validar end-to-end sin token.
+- **Pruebas (estado actual):** desplegado con `--allow-unauthenticated` para validar end-to-end sin token.
 - **Producción:** retirar el flag y exigir IAM + Bearer token (ver §7.4).
 
 #### D. Comandos de despliegue (orden recomendado)
+
+**API / Gemini** (`functions/api`):
 
 ```bash
 # Seleccionar proyecto FinOps
@@ -339,26 +394,76 @@ gcloud functions deploy analyzeIntake \
   --set-env-vars=PROJECT_ID=kashio-finops
 ```
 
+**Library / GCS** (`functions/library`):
+
+```bash
+cd aria-backend/functions/library
+
+# 5) getLibraryFiles
+gcloud functions deploy getLibraryFiles \
+  --gen2 --runtime=nodejs22 --region=us-central1 \
+  --source=. --entry-point=getLibraryFiles \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars=GCS_BUCKET_NAME=karia-library-files
+
+# 6) getLibraryUploadUrl
+gcloud functions deploy getLibraryUploadUrl \
+  --gen2 --runtime=nodejs22 --region=us-central1 \
+  --source=. --entry-point=getLibraryUploadUrl \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars=GCS_BUCKET_NAME=karia-library-files
+
+# 7) downloadLibraryFile
+gcloud functions deploy downloadLibraryFile \
+  --gen2 --runtime=nodejs22 --region=us-central1 \
+  --source=. --entry-point=downloadLibraryFile \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars=GCS_BUCKET_NAME=karia-library-files
+
+# 8) deleteLibraryFile
+gcloud functions deploy deleteLibraryFile \
+  --gen2 --runtime=nodejs22 --region=us-central1 \
+  --source=. --entry-point=deleteLibraryFile \
+  --trigger-http --allow-unauthenticated \
+  --set-env-vars=GCS_BUCKET_NAME=karia-library-files
+```
+
+> **Nota sobre URLs:** Cloud Run Functions Gen 2 expone las funciones bajo el dominio `*.run.app` (no el legacy `*.cloudfunctions.net`). El patrón final es `https://{nombre-en-minúsculas}-476648227615.us-central1.run.app`.
+
 #### E. Verificación post-despliegue
 
 ```bash
-# Smoke
-curl "https://us-central1-kashio-finops.cloudfunctions.net/health"
+# Smoke API
+curl "https://health-476648227615.us-central1.run.app"
 
 # Chat (con allow-unauthenticated)
-curl -X POST "https://us-central1-kashio-finops.cloudfunctions.net/ariaChat" \
+curl -X POST "https://ariachat-476648227615.us-central1.run.app" \
   -H "Content-Type: application/json" \
   -d '{"message":"Hola ARIA, dime que haces.","history":[]}'
 
 # Outline de artefacto
-curl -X POST "https://us-central1-kashio-finops.cloudfunctions.net/generateArtifact" \
+curl -X POST "https://generateartifact-476648227615.us-central1.run.app" \
   -H "Content-Type: application/json" \
   -d '{"artifactName":"Business Case","gateLabel":"G1"}'
 
 # Análisis de intake
-curl -X POST "https://us-central1-kashio-finops.cloudfunctions.net/analyzeIntake" \
+curl -X POST "https://analyzeintake-476648227615.us-central1.run.app" \
   -H "Content-Type: application/json" \
   -d '{"request":{"type":"New Product","severity":"High","problem":"Customers need a faster onboarding process","outcome":"Reduce onboarding time by 40%","scope":["UX","Backend","Compliance"],"constraints":"Must be launched before Q3"}}'
+
+# Library: listar
+curl "https://getlibraryfiles-476648227615.us-central1.run.app?category=Template"
+
+# Library: pedir URL de upload
+curl -X POST "https://getlibraryuploadurl-476648227615.us-central1.run.app" \
+  -H "Content-Type: application/json" \
+  -d '{"filename":"Plan_Producto.pdf","category":"Template","contentType":"application/pdf"}'
+
+# Library: download (filePath completo)
+curl "https://downloadlibraryfile-476648227615.us-central1.run.app?filePath=Template/lib-1730301800-Plan_Producto.pdf"
+
+# Library: delete (filePath completo)
+curl -X DELETE "https://deletelibraryfile-476648227615.us-central1.run.app?filePath=Template/lib-1730301800-Plan_Producto.pdf"
 ```
 
 > **Nota cache de la API key:** `getGeminiApiKey()` cachea en memoria (`cachedApiKey`). Tras rotar el secreto en Secret Manager, hacer **redeploy** o reiniciar la función para forzar la lectura de la nueva versión.
@@ -541,8 +646,9 @@ Si aún tenéis scripts legacy `001_initial_schema.sql` / `002_aria_current_sche
 
 | Necesidad | Qué revisar |
 |-----------|-------------|
-| Endpoints REST | Este documento §6 |
-| Biblioteca de ficheros | Bucket GCS + IAM + estructura §3.1 + rutas §6.2 |
+| Endpoints REST (Express) | Este documento §6 |
+| **Endpoints HTTP de Cloud Run Functions (8 activos)** | **`docs/DEPLOYED_ENDPOINTS.md`** + §7.1 / §7.2 (URLs en Kashio-Finops, bodies, ejemplos curl) |
+| Biblioteca de ficheros | Bucket GCS + IAM + estructura §3.1 + rutas §6.2 (Express) y §7.2 (Cloud Functions) |
 | Catálogo SQL de biblioteca | Tabla `library_file` (§5) + integración pendiente en endpoints |
 | CRUD iniciativas / definiciones | `ConnectionString_Karia` + migración **`003`** §11 |
 | Lectura intakes | Tabla poblada + GET `/api/db/intakes` |
@@ -551,4 +657,4 @@ Si aún tenéis scripts legacy `001_initial_schema.sql` / `002_aria_current_sche
 
 ---
 
-*Última revisión: `PROJECT_ID=kashio-finops` (default en `functions/api`), Node.js **22** (Cloud Functions) y **24** (Express en Docker), Express 5, dependencias bumpeadas a últimas (ver `package.json`), bucket **`karia-library-files`**, secreto **`gemini-api-key`** en Kashio-Finops.*
+*Última revisión: migración 2026-04 — **8 Cloud Run Functions activas en Kashio-Finops** (`https://{nombre}-476648227615.us-central1.run.app`); hardening de `functions/library` (sin `req.params[0]`, acceso exacto por `filePath`, CORS restringido); `PROJECT_ID=kashio-finops` (default en `functions/api`); Node.js **22** (Cloud Functions) y **24** (Express en Docker); Express 5; bucket **`karia-library-files`**; secreto **`gemini-api-key`** en Kashio-Finops. Catálogo operativo de las 8 funciones: **`docs/DEPLOYED_ENDPOINTS.md`**.*
