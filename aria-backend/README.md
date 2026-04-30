@@ -1,82 +1,116 @@
-# ARIA Backend
+# ARIA Backend (Express + TypeScript)
 
-API Express independiente del portal ARIA (Kashio). Este repositorio es **totalmente autocontenido** y se despliega de forma independiente del frontend (`aria-frontend`) en Google Cloud Run.
+Servidor HTTP del producto **ARIA** para Kashio FinOps. Expone la API REST que consume el frontend (Postgres + Cloud Storage). Las **8 Cloud Run Functions** quedan en `functions/` solo como referencia/origen del despliegue serverless; **no** forman parte de este servicio.
 
-**Referencia backend:** [docs/BACKEND_REFERENCE.md](docs/BACKEND_REFERENCE.md) · **BD v2 + GCS + DDL:** [docs/DATABASE_AUDIT.md](docs/DATABASE_AUDIT.md) · **Mejoras / roadmap:** [docs/mejoras.md](docs/mejoras.md).
+---
 
 ## Estructura
 
 ```
 aria-backend/
-├── index.js              # Servidor Express (API principal)
-├── db.js                 # Pool PostgreSQL (URI + opciones TLS)
-├── package.json          # Dependencias del servicio
-├── Dockerfile            # Imagen para Cloud Run
-├── cloudbuild.yaml       # Pipeline de CI/CD (GCP Cloud Build)
-├── .dockerignore
-├── .gitignore
-├── functions/            # Cloud Functions desplegables por separado
-│   ├── api/              # Funciones HTTP (Gemini / APIs generales)
-│   ├── library/          # Funciones de la biblioteca de artefactos
-│   └── storage/          # Utilidades de Cloud Storage
-└── migrations/           # SQL PostgreSQL (003 = esquema v2 recomendado)
-    ├── squema.db           # volcado de referencia (v1)
-    └── 003_v2_four_tables.sql
+├── src/
+│   ├── config/         # env, conexión Postgres, cliente GCS
+│   ├── const/          # listas/enums fijos (categorías, TTLs)
+│   ├── controllers/    # handlers Express (entrada / salida HTTP)
+│   ├── middleware/     # error handler, 404
+│   ├── repositories/   # SQL: 1 archivo por tabla
+│   ├── routes/         # 1 archivo por entidad + index.ts
+│   ├── services/       # lógica de negocio
+│   ├── types/          # interfaces compartidas
+│   ├── utils/          # helpers (sanitize, asyncHandler, sql)
+│   └── index.ts        # entry: app, mount, listen
+├── docs/               # documentación funcional / arquitectura
+├── database/           # DDL Postgres (schemaV2.sql)
+├── scripts/            # utilitarios operativos (vacío)
+├── functions/          # Cloud Functions (despliegue separado, NO se incluye en la imagen)
+├── Dockerfile
+├── tsconfig.json
+└── package.json
 ```
 
-## Requisitos
+---
 
-- Node.js 18+
-- Cuenta de Google Cloud con Cloud Run, PostgreSQL (conexión directa) y Cloud Storage; biblioteca migrada en proyecto **Kashio FinOps**, bucket **`karia-library-files`** (ver `BACKEND_REFERENCE.md`)
-- `gcloud` CLI autenticado
+## Mapa de endpoints (ingress + entidad)
+
+La API se monta con prefijo **fijo** en código: **`/karia-svc/v2/`** (`src/index.ts`). El liveness **`GET /health`** queda en la **raíz** del contenedor.
+
+| Tabla / recurso | Método | Ruta | Acción |
+|------------------|--------|------|--------|
+| — | GET | `/health` | Liveness (raíz, probes) |
+| — | GET | `/karia-svc/v2/health` | Liveness bajo prefijo |
+| — | GET | `/karia-svc/v2/health/db` | `SELECT 1` (testConnection) |
+| `initiative` | GET | `/karia-svc/v2/initiatives` | Lista |
+| `initiative` | POST | `/karia-svc/v2/initiatives` | Crea |
+| `initiative` | PUT | `/karia-svc/v2/initiatives/:id` | Actualiza (parcial) |
+| `initiative` | DELETE | `/karia-svc/v2/initiatives/:id` | Elimina |
+| `intake_request` | GET | `/karia-svc/v2/intakes` | Lista (solo lectura) |
+| `artifact_definition` | GET | `/karia-svc/v2/artifact-definitions` | Lista |
+| `artifact_definition` | POST | `/karia-svc/v2/artifact-definitions` | Crea |
+| `artifact_definition` | PUT | `/karia-svc/v2/artifact-definitions/:id` | Actualiza |
+| `artifact_definition` | DELETE | `/karia-svc/v2/artifact-definitions/:id` | Elimina |
+| GCS bucket | GET | `/karia-svc/v2/library/files` | Lista archivos (dedupe versiones output `.md`) |
+| GCS bucket | POST | `/karia-svc/v2/library/upload-url` | URL firmada (write) |
+| GCS bucket | GET | `/karia-svc/v2/library/download/:fileId` | URL firmada (read) |
+| GCS bucket | DELETE | `/karia-svc/v2/library/delete/:fileId` | Borra archivo |
+| GCS `Output/` | GET | `/karia-svc/v2/artifacts/files` | Lista nombres bajo `Output/` |
+| GCS `Output/` | POST | `/karia-svc/v2/artifacts/publish` | Guarda markdown |
+| GCS `Output/` | POST | `/karia-svc/v2/artifacts/publish-pdf` | Guarda PDF (raw) |
+
+> **Cambio respecto a v1:** desaparece el prefijo `/api/db/...`. Cada entidad expone su propio recurso REST bajo `/karia-svc/v2/...`. Si el front usaba esas rutas, hay que actualizarlas (`/api/db/initiatives` → `/karia-svc/v2/initiatives`, etc.).
+
+---
 
 ## Variables de entorno
 
-| Variable         | Uso                                                  |
-|------------------|------------------------------------------------------|
-| `PORT`           | Puerto HTTP (por defecto `8080`)                     |
-| `ConnectionString_Karia` | URI PostgreSQL (`postgresql://…`) — conexión directa al servidor. |
-| `DB_SSL_CA` | Opcional. Ruta a PEM del CA del proveedor (TLS verificado). |
-| `DB_SSL_REJECT_UNAUTHORIZED` | Opcional. `false` desactiva verificación del certificado (solo dev / red de confianza). |
-| `SERVICE_BASE_PATH`     | Opcional. Prefijo ingress (p. ej. `/karia-svc/v2`). Cloud Build lo fija por defecto. |
-| `GCS_BUCKET_NAME`       | Opcional. Bucket de biblioteca (default **`karia-library-files`** en FinOps). `cloudbuild.yaml` lo inyecta en Cloud Run. |
-| `GEMINI_API_KEY` | API key de Gemini para los endpoints de generación   |
+Mismas claves que antes; la lista canónica está en `.env.example`:
 
-En Cloud Run se inyectan vía `--set-secrets` (ver `cloudbuild.yaml`).
+- `PORT`
+- `ConnectionString_Karia`, `DB_SSL_CA`, `DB_SSL_REJECT_UNAUTHORIZED`
+- `GCS_BUCKET_NAME`, `GOOGLE_APPLICATION_CREDENTIALS`
+
+---
 
 ## Desarrollo local
 
 ```bash
+cd aria-backend
 npm install
-# copia .env.example → .env y ajusta valores (al menos ConnectionString_Karia y GEMINI_API_KEY)
+copy .env.example .env   # editar valores
+
+# Modo watch con TypeScript (sin compilar a dist/)
+npm run dev
+
+# O compilando:
+npm run build
 npm start
-# API en http://localhost:8080
 ```
 
-Si no defines `ConnectionString_Karia`, el server arranca igual (útil para trabajar solo contra `/api/library/*` o `/api/artifacts/*`), pero los endpoints `/api/db/*` responderán con error controlado.
-
-Healthcheck: `GET /health`.
-
-## Despliegue independiente (Cloud Run)
+**Probar rápidamente:**
 
 ```bash
+curl http://localhost:3000/health           # liveness raíz (default local)
+curl http://localhost:3000/karia-svc/v2/health
+curl http://localhost:3000/karia-svc/v2/health/db
+curl http://localhost:3000/karia-svc/v2/initiatives
+```
+
+---
+
+## Build / despliegue
+
+`Dockerfile` es **multi-stage**: compila TS en una etapa y ejecuta `node dist/index.js` con dependencias de producción en la imagen final. `cloudbuild.yaml` ya hace `gcloud run deploy aria-backend` en `us-central1` y mantiene los mismos secretos / env vars (`GEMINI_API_KEY`, `ConnectionString_Karia`, `GCS_BUCKET_NAME`, `PROJECT_ID`).
+
+```bash
+# Cloud Build
 gcloud builds submit --config=cloudbuild.yaml .
+
+# O Docker local
+docker build -t aria-backend .
+docker run --rm -p 8080:8080 --env-file .env aria-backend
 ```
 
-El pipeline construye la imagen, la publica en Container Registry y la despliega como servicio `aria-backend` en Cloud Run. **No depende en absoluto de `aria-frontend`.**
+---
 
-## Cloud Functions
+## Carpetas que **no** entran en la imagen
 
-Las funciones dentro de `functions/` se despliegan por separado (p. ej. `gcloud functions deploy`) y quedan excluidas del contenedor (ver `.dockerignore`). Cada subcarpeta tiene su propio `package.json`.
-
-## Migraciones
-
-**BD nueva v2 (4 tablas, recomendado):**
-
-```bash
-psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
-```
-
-Detalle de tablas, GCS y `library_file`: [docs/DATABASE_AUDIT.md](docs/DATABASE_AUDIT.md).
-
-Si en otro entorno usáis scripts legacy `001` / `002`, revisad conflictos antes de mezclar con `003`.
+`functions/`, `database/`, `scripts/`, `docs/` están listadas en `.dockerignore`. Las funciones GCP se despliegan por separado con `gcloud functions deploy` (ver `docs/BACKEND_REFERENCE.md` §7).

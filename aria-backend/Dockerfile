@@ -1,24 +1,36 @@
-# ARIA Backend - API Express (Cloud Run)
-# Build context: this repository root
+# ARIA Backend - Express + TypeScript (Cloud Run)
+# Build context: this folder (aria-backend/)
 #
 #   docker build -t aria-backend .
 #
+
+# ---------- Build stage ----------
+FROM node:24-alpine AS build
+
+WORKDIR /app
+
+COPY package*.json tsconfig.json ./
+RUN npm ci
+
+COPY src ./src
+RUN npm run build
+
+# ---------- Runtime stage ----------
 FROM node:24-alpine
 
 WORKDIR /app
 
-# Install only production dependencies
+ENV NODE_ENV=production
+ENV PORT=8080
+
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# Copy application source
-COPY index.js ./index.js
-COPY db.js ./db.js
+COPY --from=build /app/dist ./dist
 
-# Healthcheck against /health endpoint
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 EXPOSE 8080
 
-CMD ["node", "index.js"]
+CMD ["node", "dist/index.js"]

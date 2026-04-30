@@ -1,0 +1,270 @@
+{
+  "info": {
+    "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+    "name": "Karia ARIA Backend",
+    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo fijo `{{apiPrefix}}` (por defecto `/karia-svc/v2`).\n\nAjusta la variable **baseUrl** (ej. `http://localhost:3000`). Los bodies de ejemplo son orientativos; revisa tipos en `src/types/`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiPrefix", "value": "karia-svc/v2" },
+    { "key": "initiativeId", "value": "init-uuid-ejemplo" },
+    { "key": "artifactDefId", "value": "def-uuid-ejemplo" },
+    { "key": "libraryFileId", "value": "lib-1234567890-nombre-archivo.txt" }
+  ],
+  "item": [
+    {
+      "name": "1. Raíz (probes)",
+      "item": [
+        {
+          "name": "GET Liveness (raíz)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Respuesta plano: `OK`. No usa el prefijo `/karia-svc/v2`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "2. Health",
+      "item": [
+        {
+          "name": "GET Liveness (API)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/health",
+            "description": "Controlador de salud bajo el prefijo de ingress. Respuesta plano: `healthy`."
+          },
+          "response": []
+        },
+        {
+          "name": "GET Health DB",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/health/db",
+            "description": "JSON con resultado de `SELECT 1` (conexión Postgres)."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "3. Initiatives",
+      "item": [
+        {
+          "name": "List initiatives",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives"
+          },
+          "response": []
+        },
+        {
+          "name": "Create initiative",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{initiativeId}}\",\n  \"name\": \"Mi iniciativa\",\n  \"type\": \"Run\",\n  \"product\": null,\n  \"startDate\": null,\n  \"endDate\": null,\n  \"quarter\": null,\n  \"status\": null,\n  \"intakeRequestId\": null,\n  \"currentGateId\": \"G0\",\n  \"pipelineActivated\": false,\n  \"artifacts\": []\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives",
+            "description": "Mínimo requerido por el servicio: **id** y **name**. `type` debe ser `Run` o `Change` (obligatorio en INSERT DB)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update initiative",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Nombre actualizado\",\n  \"status\": \"active\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}",
+            "description": "Body: campos parciales (`InitiativeUpdate`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete initiative",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "4. Intakes (solo lectura)",
+      "item": [
+        {
+          "name": "List intakes",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/intakes",
+            "description": "Lista `intake_request`."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "5. Artifact definitions",
+      "item": [
+        {
+          "name": "List artifact definitions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions"
+          },
+          "response": []
+        },
+        {
+          "name": "Create artifact definition",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"id\": \"{{artifactDefId}}\",\n  \"gate\": \"G1\",\n  \"name\": \"Documento de visión\",\n  \"description\": \"Opcional\",\n  \"initiativeType\": \"Both\",\n  \"predecessorIds\": [],\n  \"mandatory\": false,\n  \"area\": \"Producto\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
+            "description": "Mínimo: **id**, **gate**, **name**."
+          },
+          "response": []
+        },
+        {
+          "name": "Update artifact definition",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Texto actualizado\",\n  \"mandatory\": true\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}"
+          },
+          "response": []
+        },
+        {
+          "name": "Delete artifact definition",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "6. Library (GCS)",
+      "item": [
+        {
+          "name": "List library files",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/library/files",
+            "description": "Requiere credenciales GCP (ADC / `GOOGLE_APPLICATION_CREDENTIALS`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Signed upload URL",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"filename\": \"mi-contexto.md\",\n  \"category\": \"Contexto\",\n  \"contentType\": \"text/markdown\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/library/upload-url",
+            "description": "`category` debe ser una de: **Contexto**, **Output**, **Prompt**, **Template**."
+          },
+          "response": []
+        },
+        {
+          "name": "Signed download URL",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/library/download/{{libraryFileId}}",
+            "description": "`fileId` es el id devuelto al crear upload (p. ej. `lib-...`)."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete library file",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/library/delete/{{libraryFileId}}"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "7. Artifacts / Output (GCS)",
+      "item": [
+        {
+          "name": "List artifact output files",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifacts/files"
+          },
+          "response": []
+        },
+        {
+          "name": "Publish artifact (Markdown)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"initiativeName\": \"Mi iniciativa\",\n  \"artifactName\": \"Informe\",\n  \"gate\": \"G1\",\n  \"version\": \"1.0\",\n  \"content\": \"# Título\\n\\nCuerpo en Markdown.\",\n  \"contentType\": \"text/markdown\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifacts/publish",
+            "description": "**artifactName** y **content** son los campos clave. `initiativeId` o `initiativeName` según negocio."
+          },
+          "response": []
+        },
+        {
+          "name": "Publish artifact (PDF)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/pdf" },
+              { "key": "initiativename", "value": "Mi iniciativa", "description": "Cabecera en minúsculas (Express)." },
+              { "key": "artifactname", "value": "Informe" },
+              { "key": "gate", "value": "G1" },
+              { "key": "version", "value": "1.0" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": { "raw": { "language": "text" } }
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifacts/publish-pdf",
+            "description": "Body **binario** PDF (`application/pdf`, límite 50 MB). En Postman: pestaña Body → **binary** y elige un `.pdf`. Las cabeceras `initiativename`, `artifactname`, `gate`, `version` son opcionales pero típicas."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}

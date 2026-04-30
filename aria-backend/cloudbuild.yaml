@@ -33,7 +33,7 @@ steps:
       - '--port=8080'
       - '--timeout=300'
       - '--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,ConnectionString_Karia=aria-database-url:latest'
-      - '--set-env-vars=SERVICE_BASE_PATH=/karia-svc/v2,GCS_BUCKET_NAME=karia-library-files,PROJECT_ID=kashio-finops'
+      - '--set-env-vars=GCS_BUCKET_NAME=karia-library-files,PROJECT_ID=kashio-finops'
 
 images:
   - 'gcr.io/$PROJECT_ID/aria-backend:$COMMIT_SHA'

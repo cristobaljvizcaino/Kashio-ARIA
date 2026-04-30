@@ -1,10 +1,13 @@
 {
-  "name": "aria-server",
-  "version": "1.1.0",
-  "description": "Express server for ARIA — Kashio FinOps",
-  "main": "index.js",
+  "name": "aria-backend",
+  "version": "2.0.0",
+  "description": "ARIA Backend (Express + TypeScript) — Kashio FinOps",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node index.js"
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "engines": {
     "node": ">=22"
@@ -15,5 +18,13 @@
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.20.0"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.6.0",
+    "@types/pg": "^8.20.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.3"
   }
 }

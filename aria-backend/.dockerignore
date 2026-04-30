@@ -1,4 +1,4 @@
-# Keep the Docker build context small and fast
+# Keep the Docker build context small and fast.
 
 **/node_modules
 npm-debug.log*
@@ -6,6 +6,7 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
+# Build outputs are produced inside the build stage.
 **/dist
 **/build
 .output
@@ -32,10 +33,6 @@ yarn-error.log*
 
 coverage
 .nyc_output
-*.test.js
-*.spec.js
-__tests__
-__mocks__
 
 logs
 *.log
@@ -43,7 +40,9 @@ tmp
 temp
 *.tmp
 
-# The serverless Cloud Functions and SQL migrations are deployed separately,
+# The serverless Cloud Functions and SQL migrations are deployed separately;
 # they are NOT part of the Express API container image.
 functions/
+database/
 migrations/
+scripts/
