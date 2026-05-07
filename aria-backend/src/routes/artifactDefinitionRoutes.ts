@@ -5,8 +5,9 @@ import { asyncHandler } from '../utils/async';
 const router = Router();
 
 router.get('/', asyncHandler(controller.listArtifactDefinitions));
+router.get('/:publicId', asyncHandler(controller.getArtifactDefinition));
 router.post('/', asyncHandler(controller.createArtifactDefinition));
-router.put('/:id', asyncHandler(controller.updateArtifactDefinition));
-router.delete('/:id', asyncHandler(controller.deleteArtifactDefinition));
+router.put('/:publicId', asyncHandler(controller.updateArtifactDefinition));
+router.delete('/:publicId', asyncHandler(controller.deleteArtifactDefinition));
 
 export default router;

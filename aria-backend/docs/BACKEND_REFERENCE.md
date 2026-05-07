@@ -141,7 +141,7 @@ Esquema objetivo para **BD nueva (v2)**: **4 tablas**, DDL en repo en **`databas
 |-------|----------------------------------------|--------|
 | **`initiative`** | `GET/POST /initiatives`, `PUT/DELETE /initiatives/:id` | CRUD completo. |
 | **`intake_request`** | Solo `GET /intakes` | Sin POST/PUT/DELETE en Express. |
-| **`artifact_definition`** | `GET/POST /artifact-definitions`, `PUT/DELETE …/:id` | Gates = columna `gate` (G0…G5). **No** hay tabla `phase` en este entregable. |
+| **`artifact_definition`** | `GET /artifact-definitions`, `GET …/:publicId`, `POST /artifact-definitions`, `PUT/DELETE …/:publicId` | Modelo **fase** 1–8 (PDLC KashioOS), **`public_id`** (UUID) en rutas de detalle/actualización/borrado, **`predecessor_names`** (jsonb, nombres). Ver **`docs/API_DATABASE_ENDPOINTS.md`** §4. **No** hay tabla `fases` en el esquema mínimo actual. |
 | **`library_file`** | *(ninguno todavía)* | Catálogo de ficheros alineado con **GCS** (`storage_url`, categorías Contexto/Prompt/Template/Output). Integración pendiente en `/karia-svc/v2/library/*` y `/karia-svc/v2/artifacts/publish*`. |
 
 Las rutas **`/karia-svc/v2/library/*`** y **`/karia-svc/v2/artifacts/*`** operan **solo sobre el bucket** configurado (por defecto **`karia-library-files`**, FinOps; ver §3.1 y **`GCS_BUCKET_NAME`**), no sobre `library_file` hasta que se añada la escritura SQL.
@@ -193,14 +193,15 @@ Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete*
 
 | Método | Ruta | Tabla |
 |--------|------|--------|
-| GET | `/karia-svc/v2/artifact-definitions` | `artifact_definition` (lectura) |
+| GET | `/karia-svc/v2/artifact-definitions` | `artifact_definition` (lectura; respuesta agrupada por fase, ver API doc) |
+| GET | `/karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` (lectura por UUID) |
 | POST | `/karia-svc/v2/artifact-definitions` | `artifact_definition` (INSERT) |
-| PUT | `/karia-svc/v2/artifact-definitions/:id` | `artifact_definition` (UPDATE) |
-| DELETE | `/karia-svc/v2/artifact-definitions/:id` | `artifact_definition` (DELETE) |
+| PUT | `/karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` (UPDATE) |
+| DELETE | `/karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` (DELETE + cascada en `predecessor_names`) |
 
 ### 6.6 Contrato HTTP detallado (solo PostgreSQL)
 
-Cuerpos JSON (camelCase), respuestas, códigos de error, campos ignorados en PATCH y notas de idempotencia en **DELETE**: **[`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md)**. La colección Postman **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas 2–5) debe mantenerse alineada con ese documento.
+Cuerpos JSON (camelCase), respuestas, códigos de error y validaciones (p. ej. **`fase`** / **`faseName`**, **`predecessorNames`**): **[`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md)**. La colección Postman **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas 2–5, incl. **Artifact definitions**) debe mantenerse alineada con ese documento.
 
 ---
 

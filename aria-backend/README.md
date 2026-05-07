@@ -45,10 +45,11 @@ La API se monta con prefijo **fijo** en código: **`/karia-svc/v2/`** (`src/inde
 | `initiative` | PUT | `/karia-svc/v2/initiatives/:id` | Actualiza (parcial) |
 | `initiative` | DELETE | `/karia-svc/v2/initiatives/:id` | Elimina |
 | `intake_request` | GET | `/karia-svc/v2/intakes` | Lista (solo lectura) |
-| `artifact_definition` | GET | `/karia-svc/v2/artifact-definitions` | Lista |
+| `artifact_definition` | GET | `/karia-svc/v2/artifact-definitions` | Lista (respuesta agrupada por fase; ver `docs/API_DATABASE_ENDPOINTS.md`) |
+| `artifact_definition` | GET | `/karia-svc/v2/artifact-definitions/:publicId` | Una definición por UUID |
 | `artifact_definition` | POST | `/karia-svc/v2/artifact-definitions` | Crea |
-| `artifact_definition` | PUT | `/karia-svc/v2/artifact-definitions/:id` | Actualiza |
-| `artifact_definition` | DELETE | `/karia-svc/v2/artifact-definitions/:id` | Elimina |
+| `artifact_definition` | PUT | `/karia-svc/v2/artifact-definitions/:publicId` | Actualiza |
+| `artifact_definition` | DELETE | `/karia-svc/v2/artifact-definitions/:publicId` | Elimina (cascada en `predecessor_names`) |
 | GCS bucket | GET | `/karia-svc/v2/library/files` | Lista archivos (dedupe versiones output `.md`) |
 | GCS bucket | POST | `/karia-svc/v2/library/upload-url` | URL firmada (write) |
 | GCS bucket | GET | `/karia-svc/v2/library/download/:fileId` | URL firmada (read) |

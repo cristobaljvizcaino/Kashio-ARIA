@@ -236,8 +236,8 @@ Si en el futuro se adopta la tabla `fases`, se puede añadir `phase_id` FK **ade
 
 - **Hoy (solo documentación / convivencia):** en publicación GCS se puede seguir usando el campo/cabecera **`gate`** enviando el **nombre de carpeta** `Phase-1`…`Phase-8` para alinear con el bucket sin cambiar el backend.
 - **Objetivo al cerrar la migración de código:** identificación de fase alineada a KashioOS (**`phaseNumber`** 1–8 o equivalente), más **`kashioInitiativeId`** cuando el cliente consume el API de iniciativas (ver §2.1).
-- Si existe tabla `fases` (Opción B), `fases.public_id` sirve para joins SQL; no confundir con `phases[].id` del API KashioOS (instancia por iniciativa). Con Opción A, ordenar por **`phase_number`** y nombre.
-- Endpoints `GET /artifact-definitions`: hoy orden por `gate` en SQL; tras migración de esquema, orden por **`phase_number`** asc y nombre.
+- Si existe tabla `fases` (Opción B), `fases.public_id` sirve para joins SQL; no confundir con `phases[].id` del API KashioOS (instancia por iniciativa). Con Opción A, ordenar por **`fase`** (1–8) y nombre en SQL.
+- **Express `aria-backend` — `artifact-definitions` (estado implementado):** tabla **`artifact_definition`** con columna **`fase`** (1–8, CHECK), **`public_id`** (UUID estable). **`GET /karia-svc/v2/artifact-definitions`** devuelve **`ArtifactDefinitionsListResponse`** (objeto con `phases` fijas 1…8, `artifacts` por fase, filtros y orden global vía query `sortBy` / `sortOrder`, default `fase` asc). **`GET|PUT|DELETE …/artifact-definitions/:publicId`** usan ese UUID. **POST/PUT** aceptan **`fase`** y/o **`faseName`** (etiquetas en `src/const/phases.ts`, mismas que **`faseLabel`** en JSON de salida), **`predecessorNames`** resueltos contra filas existentes (UUID o `name`), **`initiativeType`** `Run` \| `Change` \| `Both`. Contrato detallado: **`docs/API_DATABASE_ENDPOINTS.md`** §4; ejemplos: **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpeta 5).
 
 ---
 
@@ -262,7 +262,7 @@ Si en el futuro se adopta la tabla `fases`, se puede añadir `phase_id` FK **ade
 - [ ] Backend Express: rutas, repos, tipos, storage.
 - [ ] Cloud Functions: prompts y parámetros.
 - [ ] Frontend: filtros UI y servicios.
-- [ ] Actualizar documentación viva: `BACKEND_REFERENCE.md` §3.1, §5, §6; Postman si aplica.
+- [x] Actualizar documentación viva: `BACKEND_REFERENCE.md` §5–6; `API_DATABASE_ENDPOINTS.md` §4; Postman carpeta **Artifact definitions** (`postman/Karia-ARIA-Backend.postman_collection.json`).
 - [ ] Retirar código y columnas **gate** tras ventana de deprecación.
 
 ---

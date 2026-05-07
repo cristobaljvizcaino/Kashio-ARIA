@@ -75,10 +75,11 @@ El prefijo **`/karia-svc/v2/`** está definido en **`src/index.ts`**. **`GET /he
 | `PUT /karia-svc/v2/initiatives/:id` | `initiative` | `UPDATE` dinámico por campos enviados | Actualizar iniciativa (incl. `artifacts` JSON). |
 | `DELETE /karia-svc/v2/initiatives/:id` | `initiative` | `DELETE WHERE id` | Eliminar iniciativa. |
 | `GET /karia-svc/v2/intakes` | `intake_request` | `SELECT * ... ORDER BY created_at DESC` | **Solicitudes de intake**: problema, outcome, severidad, `aria_analysis`, etc. **Solo lectura** (no hay POST/PUT/DELETE de intakes en Express). |
-| `GET /karia-svc/v2/artifact-definitions` | `artifact_definition` | `SELECT * ... ORDER BY gate, name` | **Catálogo de artefactos** por gate (PDLC): nombre, tipo de iniciativa, predecesores, obligatoriedad, área. |
-| `POST /karia-svc/v2/artifact-definitions` | `artifact_definition` | `INSERT ...` | Alta de definición. |
-| `PUT /karia-svc/v2/artifact-definitions/:id` | `artifact_definition` | `UPDATE` dinámico | Edición de definición. |
-| `DELETE /karia-svc/v2/artifact-definitions/:id` | `artifact_definition` | `DELETE WHERE id` | Baja de definición. |
+| `GET /karia-svc/v2/artifact-definitions` | `artifact_definition` | `SELECT` filtrado/ordenado; respuesta agrupada por **fase** 1–8 | **Catálogo de artefactos** (KashioOS): `fase`, `public_id`, `predecessor_names` jsonb, etc. Ver **`API_DATABASE_ENDPOINTS.md`** §4. |
+| `GET /karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` | `SELECT … WHERE public_id` | Detalle por UUID estable. |
+| `POST /karia-svc/v2/artifact-definitions` | `artifact_definition` | `INSERT …` | Alta de definición (`fase` / `faseName`, `predecessorNames`, …). |
+| `PUT /karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` | `UPDATE` dinámico por `public_id` | Edición de definición. |
+| `DELETE /karia-svc/v2/artifact-definitions/:publicId` | `artifact_definition` | `DELETE` + actualización de `predecessor_names` en otras filas | Baja de definición. |
 
 ### 3.3 Otros
 

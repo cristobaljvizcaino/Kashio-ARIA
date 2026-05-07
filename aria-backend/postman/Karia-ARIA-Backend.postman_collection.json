@@ -2,14 +2,14 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Karia ARIA Backend",
-    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API.",
+    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API. Tras **Create artifact definition**, copia `publicId` de la respuesta a la variable **`artifactDefPublicId`** para GET/PUT/DELETE.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
     { "key": "apiPrefix", "value": "karia-svc/v2" },
     { "key": "initiativeId", "value": "init-uuid-ejemplo" },
-    { "key": "artifactDefId", "value": "def-uuid-ejemplo" },
+    { "key": "artifactDefPublicId", "value": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" },
     { "key": "libraryFileId", "value": "lib-1234567890-nombre-archivo.txt" }
   ],
   "item": [
@@ -130,7 +130,17 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "`ORDER BY gate, name`. Array con `id`, `gate`, `name`, `initiativeType`, `predecessorIds`, `description`, `mandatory`, `area`, `createdAt`, `updatedAt` (ISO)."
+            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `fase`, `faseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (Run|Change|Both), `area`, `sortBy` (`fase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`).\n\nDetalle de validación y formas: `docs/API_DATABASE_ENDPOINTS.md` §4."
+          },
+          "response": []
+        },
+        {
+          "name": "Get artifact definition by publicId",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
+            "description": "Path: **`publicId`** (UUID estable de la fila). **`200`**: un **ArtifactDefinition** (`id`, `publicId`, `fase`, `faseLabel`, `name`, `initiativeType`, `predecessorNames`, …). **`400`**: UUID inválido. **`404`**: no existe."
           },
           "response": []
         },
@@ -141,10 +151,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"id\": \"{{artifactDefId}}\",\n  \"gate\": \"G1\",\n  \"name\": \"Documento de visión\",\n  \"description\": \"Opcional\",\n  \"initiativeType\": \"Both\",\n  \"predecessorIds\": [],\n  \"mandatory\": false,\n  \"area\": \"Producto\"\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"fase\": 3,\n  \"faseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "400 sin **id**, **gate** o **name**.\nOpcionales: `initiativeType` (default Both), `predecessorIds` (array, default []), `description`, `mandatory` (default false), `area` (default Producto).\n200: objeto creado con `createdAt`/`updatedAt`."
+            "description": "**`name`** obligatorio. **Fase:** al menos uno de **`fase`** (1–8) o **`faseName`** (etiqueta KashioOS; mismas que `faseLabel` en GET — ver `src/const/phases.ts`). Si van ambos deben coincidir.\n\n**`initiativeType`:** opcional; default **`Both`**; si se envía solo **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente; se guarda como array de nombres. **`[]`** si no hay predecesores.\n\nOpcional: **`publicId`** (UUID) fijo; si se omite la BD genera uno.\n\n**`201`**: objeto creado. **`400`**: validación (fase, predecesores, initiativeType, etc.)."
           },
           "response": []
         },
@@ -155,10 +165,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"description\": \"Texto actualizado\",\n  \"mandatory\": true\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"fase\": 3,\n  \"faseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
-            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}",
-            "description": "Campos actualizables si van en el JSON: `gate`, `name`, `initiativeType`, `description`, `mandatory`, `area`, `predecessorIds` (array → JSON en BD). 404 si no existe; 400 sin campos."
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
+            "description": "Mismo **shape** que POST (puedes enviar cuerpo completo o parcial). Path: **`publicId`** UUID de la definición.\n\nSolo se actualizan claves presentes; si no envías `fase` ni `faseName`, la fase no cambia. Si no envías `predecessorNames`, esa columna no cambia.\n\n**`200`**: objeto actualizado. **`400`**: sin campos, validación. **`404`**: no existe."
           },
           "response": []
         },
@@ -167,8 +177,8 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}",
-            "description": "200 `{ \"success\": true }` siempre (misma idempotencia que DELETE initiative)."
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
+            "description": "Sin body. **`200`**: `{ success, deleted: { publicId, name }, cascade: { artifactsUpdated, message } }` — elimina la fila y quita el **nombre** borrado de `predecessor_names` en otras filas.\n\n**`404`**: definición no encontrada. **`400`**: UUID inválido en path."
           },
           "response": []
         }

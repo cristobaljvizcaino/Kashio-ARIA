@@ -172,27 +172,81 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 
 ## 4. Definiciones de artefactos — tabla `artifact_definition`
 
+Modelo vigente en BD (tras migración gate → fase): PK numérica **`id`** (`bigserial`), **`public_id`** (UUID, estable para API), **`fase`** (1–8 PDLC KashioOS), **`predecessor_names`** (`jsonb`, array de strings con nombres legibles de predecesores). Ya no se usa columna `gate` ni `predecessor_ids` con UUIDs en este contrato.
+
+Etiquetas de fase (`faseLabel`) en respuestas: 1 Research, 2 Analysis, 3 Design, 4 Frontend Development, 5 Backend Development, 6 Testing, 7 Deployment, 8 Monitoring (ver `src/const/phases.ts`).
+
+---
+
 ### `GET /karia-svc/v2/artifact-definitions`
 
 | | |
 |--|--|
-| **Operación SQL** | `SELECT * FROM artifact_definition ORDER BY gate, name` |
-| **Query / body** | Ninguno |
-| **Respuesta `200`** | Array de **ArtifactDefinition**. |
+| **Operación SQL** | `SELECT` con `WHERE` dinámico según query params; orden configurable; **sin paginación** (siempre el conjunto completo que cumple el filtro). |
+| **Query** | Opcional — ver tabla abajo. |
+| **Body** | Ninguno |
+| **Respuesta `200`** | Objeto **ArtifactDefinitionsListResponse** (no es un array plano). |
 
-**Objeto en cada elemento:**
+**Query params (todos opcionales):**
+
+| Param | Descripción |
+|-------|-------------|
+| `name` | Subcadena insensible a mayúsculas sobre la columna `name` del artefacto (parametrizada). |
+| `publicId` | UUID — filtro exacto por `public_id`. |
+| `initiativeType` | `Run` \| `Change` \| `Both` (el servidor acepta mayúsculas/minúsculas). |
+| `area` | Coincidencia **exacta** con la columna `area`. |
+| `sortBy` | `fase` (default), `name`, `updatedAt`, `createdAt`, `id`. También se acepta `updated_at` / `created_at`. |
+| `sortOrder` | `asc` (default) o `desc`. |
+
+**Forma de la respuesta (`200`):**
+
+| Campo | Tipo | Notas |
+|-------|------|--------|
+| `totalArtifacts` | number | Cantidad de filas que cumplen el filtro (suma de todos los `count` por fase). |
+| `totalPhases` | number | Siempre **8** — ranuras fijas del PDLC (`phases.length`). |
+| `phases` | array | **Siempre 8 elementos**, ordenados por `fase` 1…8. |
+| `filters` | object | Eco de filtros de negocio aplicados + `sortBy` y `sortOrder`. |
+
+**Cada elemento de `phases`:**
+
+| Campo | Tipo | Notas |
+|-------|------|--------|
+| `fase` | number | 1–8 |
+| `faseLabel` | string | Etiqueta KashioOS (ej. `Design`). |
+| `count` | number | Artefactos de esa fase que cumplen el filtro (0 si la fase queda vacía para ese resultado). |
+| `artifacts` | **ArtifactDefinition[]** | Lista de artefactos de esa fase; `[]` si `count === 0`. |
+
+Las fases sin artefactos en el catálogo (p. ej. 4 y 6 si aún no hay filas) aparecen con `count: 0` y `artifacts: []` para que el front pueda mostrar el carril vacío.
+
+**Objeto ArtifactDefinition (cada ítem en `artifacts`):**
 
 | Campo | Tipo |
 |-------|------|
-| `id` | string |
-| `gate` | string (ej. `G0`…`G5`) |
+| `id` | number (PK interna) |
+| `publicId` | string (UUID) |
+| `fase` | number (1–8) |
+| `faseLabel` | string |
 | `name` | string |
 | `initiativeType` | `"Run"` \| `"Change"` \| `"Both"` |
-| `predecessorIds` | string[] |
+| `predecessorNames` | string[] |
 | `description` | string \| null |
 | `mandatory` | boolean |
 | `area` | string |
 | `createdAt`, `updatedAt` | string (ISO 8601) |
+
+**Errores:** `400` si `initiativeType` o `sortOrder` tienen valores inválidos; `400` si `publicId` en query no es UUID válido.
+
+---
+
+### `GET /karia-svc/v2/artifact-definitions/:publicId`
+
+| | |
+|--|--|
+| **Operación SQL** | `SELECT … WHERE public_id = $1` |
+| **Path** | **`publicId`** — UUID de la definición |
+| **Respuesta `200`** | Un objeto **ArtifactDefinition** (misma forma que cada elemento de `artifacts` en el listado). |
+| **Respuesta `404`** | `{ "error": "Artifact definition not found" }` |
+| **Respuesta `400`** | UUID inválido → `{ "error": "publicId must be a valid UUID" }` |
 
 ---
 
@@ -203,51 +257,82 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 | **Operación SQL** | `INSERT … RETURNING *` |
 | **Content-Type** | `application/json` |
 
-**Validación:** **`id`**, **`gate`** y **`name`** obligatorios → si faltan `400` `{ "error": "id, gate and name are required" }`.
+**Validación:** **`name`** obligatorio. **Fase:** debe indicarse **`fase`** (entero 1–8 o string numérico `"3"`) **o** **`faseName`**. `faseName` **no es libre**: debe coincidir (sin distinguir mayúsculas) con una de las **8 etiquetas KashioOS** definidas en código (`src/const/phases.ts`), las mismas que devuelve **`faseLabel`** en GET:
+
+| `fase` | `faseName` (valor permitido) |
+|--------|------------------------------|
+| 1 | `Research` |
+| 2 | `Analysis` |
+| 3 | `Design` |
+| 4 | `Frontend Development` |
+| 5 | `Backend Development` |
+| 6 | `Testing` |
+| 7 | `Deployment` |
+| 8 | `Monitoring` |
+
+Hace falta al menos **`fase` o `faseName`** en el body; si envías **ambos**, deben referirse a la **misma** fase (ej. `fase: 3` y `faseName: "Design"`). Cualquier número fuera de 1–8 o etiqueta que no esté en la tabla → `400`. **`predecessorNames`:** cada elemento es un **`publicId`** (UUID) o el **`name`** exacto de una fila existente en `artifact_definition`; si falta alguno → `400`. Se guarda en jsonb como array de **`name`** canónicos. **`initiativeType`:** opcional; si se envía debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas); si se omite → **`Both`**.
 
 **Cuerpo (ArtifactDefinitionInput):**
 
-| Campo | Obligatorio | Tipo | Default |
-|-------|-------------|------|---------|
-| `id` | Sí | string | |
-| `gate` | Sí | string | |
+| Campo | Obligatorio | Tipo | Default / notas |
+|-------|-------------|------|-----------------|
 | `name` | Sí | string | |
-| `initiativeType` | No | `"Run"` \| `"Change"` \| `"Both"` | **`Both`** |
-| `predecessorIds` | No | string[] | **`[]`** |
+| `fase` | Condicional | number o string | 1–8; opcional si va `faseName`. |
+| `faseName` | Condicional | string | Una de las 8 etiquetas de la tabla anterior; opcional si va `fase`. |
+| `publicId` | No | string (UUID) | Si se omite, la BD genera `gen_random_uuid()`. |
+| `initiativeType` | No | `"Run"` \| `"Change"` \| `"Both"` | **`Both`** si se omite; comparación sin distinguir mayúsculas. |
+| `predecessorNames` | No | string[] | **`[]`** — UUID o `name` existente por elemento. |
 | `description` | No | string \| null | |
 | `mandatory` | No | boolean | **`false`** |
 | `area` | No | string | **`"Producto"`** |
 
-**Respuesta `200`:** un objeto **ArtifactDefinition** (incluye `createdAt` / `updatedAt` generados por la BD).
+**Respuesta `201`:** objeto **ArtifactDefinition** creado (incluye `id`, `publicId`, `createdAt`, `updatedAt`).
 
 ---
 
-### `PUT /karia-svc/v2/artifact-definitions/:id`
+### `PUT /karia-svc/v2/artifact-definitions/:publicId`
 
 | | |
 |--|--|
-| **Operación SQL** | `UPDATE … RETURNING *` |
-| **Path** | `id` de la definición |
+| **Operación SQL** | `UPDATE … WHERE public_id = $n RETURNING *` |
+| **Path** | **`publicId`** — UUID |
 | **Content-Type** | `application/json` |
 
-**Cuerpo:** parcial (**ArtifactDefinitionUpdate**). Claves reconocidas para columnas:
+**Cuerpo:** **las mismas propiedades que en POST** (`name`, `fase`, `faseName`, `initiativeType`, `description`, `mandatory`, `area`, `predecessorNames`). Puedes enviar el **JSON completo** (mismo shape que un alta) para sobrescribir todos los campos que incluyas, o un **subconjunto** parcial: solo se actualizan las claves presentes (excepto fase: ver siguiente viñeta).
 
-`gate`, `name`, `initiativeType`, `description`, `mandatory`, `area`, **`predecessorIds`** (se guarda como JSON en `predecessor_ids`).
+- **`publicId`** no se envía en el body del PUT (va solo en la URL).
+- Si **no** envías `fase` ni `faseName`, la columna **`fase`** no cambia. Si envías cualquiera de los dos (o ambos), aplican la **misma** tabla de etiquetas y reglas de conflicto que en POST.
+- Si envías `initiativeType`, debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas). Si omites la clave, **`initiativeType`** no cambia.
+- **`predecessorNames`:** misma validación que POST (UUID o `name` existente por elemento).
 
-- **`id`:** no se actualiza desde el body (va en la URL; el body `id` se ignora para el SET).
-- Otras claves (p. ej. `createdAt`) **no** forman parte del `UPDATE` y se ignoran.
+**Ejemplo de cuerpo (equivalente al que usarías en POST):**
 
-**Respuestas:** mismo patrón que iniciativas — `200` objeto actualizado, `400` sin campos, `404` si no existe la fila.
+```json
+{
+  "name": "2.9. Ejemplo SDD",
+  "fase": 3,
+  "faseName": "Design",
+  "initiativeType": "Run",
+  "description": "Descripción de prueba",
+  "mandatory": false,
+  "area": "Producto",
+  "predecessorNames": []
+}
+```
+
+**Respuestas:** `200` objeto actualizado; `400` sin campos, fase/predecesores/`initiativeType` inválidos o cuerpo inválido; `404` si no existe la fila.
 
 ---
 
-### `DELETE /karia-svc/v2/artifact-definitions/:id`
+### `DELETE /karia-svc/v2/artifact-definitions/:publicId`
 
 | | |
 |--|--|
-| **Operación SQL** | `DELETE FROM artifact_definition WHERE id = $1` |
+| **Operación SQL** | Transacción: borra la fila por `public_id` y actualiza otras filas cuyo `predecessor_names` (jsonb) contiene el **nombre** del artefacto borrado (`predecessor_names - nombre`). |
+| **Path** | **`publicId`** — UUID |
 | **Body** | Ignorado |
-| **Respuesta `200`** | `{ "success": true }` (misma consideración de idempotencia que en iniciativas). |
+| **Respuesta `200`** | Objeto con `success`, `deleted` (`publicId`, `name`) y `cascade` (`artifactsUpdated`, `message`). |
+| **Respuesta `404`** | Definición no encontrada. |
 
 ---
 
@@ -263,10 +348,11 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 | PUT | `/karia-svc/v2/initiatives/:id` | JSON parcial Initiative |
 | DELETE | `/karia-svc/v2/initiatives/:id` | — |
 | GET | `/karia-svc/v2/intakes` | — |
-| GET | `/karia-svc/v2/artifact-definitions` | — |
+| GET | `/karia-svc/v2/artifact-definitions` | Query opcional: `name`, `publicId`, `initiativeType`, `area`, `sortBy`, `sortOrder` |
+| GET | `/karia-svc/v2/artifact-definitions/:publicId` | — |
 | POST | `/karia-svc/v2/artifact-definitions` | JSON ArtifactDefinitionInput |
-| PUT | `/karia-svc/v2/artifact-definitions/:id` | JSON parcial ArtifactDefinition |
-| DELETE | `/karia-svc/v2/artifact-definitions/:id` | — |
+| PUT | `/karia-svc/v2/artifact-definitions/:publicId` | JSON (mismo shape que POST; parcial permitido; UUID en path) |
+| DELETE | `/karia-svc/v2/artifact-definitions/:publicId` | — |
 
 ---
 
@@ -276,7 +362,7 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 |-------|---------------------------|
 | **`initiative`** | Columnas usadas por el repo coinciden con el DDL (`id`, `name`, `product`, `current_gate_id` default `G0`, `type` nullable + CHECK, fechas como `varchar`, `artifacts` jsonb default `[]`, `pipeline_activated` default false). Los triggers llaman a `update_updated_at_column()` (la función debe existir en la BD; ver `database/README.md`). |
 | **`intake_request`** | El GET refleja las columnas del `SELECT *`; `requester` y `problem` son **NOT NULL** en DDL; el JSON del API sigue los tipos en `src/types/intake.ts`. |
-| **`artifact_definition`** | `initiative_type` con CHECK `Change`/`Run`/`Both`, defaults `Both` y `Producto`, `predecessor_ids` jsonb — alineado con `artifactDefinitionRepository` y esta guía. |
+| **`artifact_definition`** | Modelo vigente: `id` bigserial, `public_id` uuid, `fase` 1–8, `predecessor_names` jsonb, `initiative_type` CHECK `Change`/`Run`/`Both`. Ver `database/schemaV2.sql` y migraciones en `database/migrations/`. |
 | **`library_file`** | Existe en `schemaV2.sql` pero **no** hay rutas Express documentadas aquí que lean/escriban esa tabla (solo GCS en otras rutas). |
 
 Fuente de verdad del esquema físico: **`database/schemaV2.sql`**. Fuente de verdad del contrato HTTP: **`src/`** + este documento; si divergen, primero revisar migraciones o ramas distintas.
