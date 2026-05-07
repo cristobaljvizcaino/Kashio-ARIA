@@ -11,9 +11,8 @@ Documento único para entender **todo lo que incluye `aria-backend`**, cómo se 
 | **`src/index.ts`** | Servidor **Express** único: API REST (compilado a `dist/index.js`). |
 | **`src/config/database.ts`** | Pool **PostgreSQL** con `pg`; usa la variable **`ConnectionString_Karia`**. |
 | **`package.json`** | Dependencias del proceso Node del servidor (`express`, `cors`, `@google-cloud/storage`, `pg`). |
-| **`Dockerfile`** | Imagen **API TypeScript** (build multi-stage → `dist/`; no incluye `functions/` ni `database/`). |
-| **`cloudbuild.yaml`** | **Cloud Build**: build Docker → push **Artifact Registry / GCR** → deploy **Cloud Run**. |
-| **`migrations/`** | SQL **PostgreSQL**; se aplican aparte (no van dentro de la imagen Docker actual). |
+| **`Dockerfile`** | Imagen **API TypeScript** (build multi-stage → `dist/`; no incluye `functions/` ni `database/`). Cloud Run puede construir y desplegar con `--source .` usando solo este archivo. |
+| **`database/`** | DDL PostgreSQL (`schemaV2.sql` vigente, `schemaV1.sql` legacy); ver `database/README.md`. No entra en la imagen Docker (`.dockerignore`). |
 | **`functions/`** | **Cloud Functions** (Node, `@google-cloud/functions-framework`) — **despliegue independiente** del contenedor Express. |
 | **`.env.example`** | Plantilla de variables locales. |
 
@@ -44,7 +43,7 @@ Region habitual: **`us-central1`**. Las **8 Cloud Run Functions HTTP** del backe
 
 | Rol | Proyecto (consola) | Notas |
 |-----|-------------------|--------|
-| **Biblioteca y artefactos (GCS)** | **Kashio FinOps** — **`Kashio-Finops`** | Bucket **`karia-library-files`**, **us-central1 (Iowa)**, clase **Standard**, **no publico**. Estructura: `Contexto/`, `Prompt/`, `Template/`, `Output/` (subcarpetas por gate). |
+| **Biblioteca y artefactos (GCS)** | **Kashio FinOps** — **`Kashio-Finops`** | Bucket **`karia-library-files`**, **us-central1 (Iowa)**, clase **Standard**, **no publico**. Estructura: `Contexto/`, `Prompt/`, `Template/`, `Output/` (subcarpetas **`Phase-1/` … `Phase-8/`**). |
 | **Secret Manager — clave Gemini** | **Kashio FinOps** — **`Kashio-Finops`** | Secreto **`gemini-api-key`**, versión **1**, estado **Habilitada**, cifrado administrado por Google. Ruta `projects/kashio-finops/secrets/gemini-api-key`. Consumido por `functions/api` (y opcionalmente por Cloud Run vía `--set-secrets`). |
 | **Cloud Run Functions (8 endpoints activos)** | **Kashio FinOps** — **`Kashio-Finops`** | URLs con formato `https://{nombre}-476648227615.us-central1.run.app`. 4 IA: `health`, `ariachat`, `generateartifact`, `analyzeintake`. 4 Library: `getlibraryfiles`, `getlibraryuploadurl`, `downloadlibraryfile`, `deletelibraryfile`. Catálogo en **`docs/DEPLOYED_ENDPOINTS.md`**. |
 | **API REST Postgres + GCS (monolito)** | **Kashio FinOps** (proyecto del servicio Cloud Run `aria-backend`) | Rutas bajo **`/karia-svc/v2/`** (`initiatives`, `intakes`, `artifact-definitions`, `library/*`, `artifacts/*`). Requiere **`ConnectionString_Karia`** y permisos de Storage sobre **`karia-library-files`**. |
@@ -89,30 +88,31 @@ Region habitual: **`us-central1`**. Las **8 Cloud Run Functions HTTP** del backe
 
 El codigo usa **`GCS_BUCKET_NAME`** con valor por defecto **`karia-library-files`** (`src/config/env.ts` + `src/config/storage.ts`). El arbol coincide con el **navegador de carpetas** de Cloud Storage y con el modal "Cargar Archivo" del frontend (categorias **Contexto**, **Prompt**, **Template**, **Output**).
 
-**Contenido tipico:** en **`Template/`** conviven Markdown (p. ej. `lib-{timestamp}-Plantilla_*.md`, `Artefacto_*.md`) y PDFs; en **`Output/`** hay subcarpetas por gate (**G1**–**G5** visibles en consola; **G0** cuando la API publica sin gate). Archivos bajo **Contexto / Prompt / Template** siguen el prefijo `lib-{timestamp}-{nombre}` en subidas por URL firmada.
+**Estructura vista en consola (bucket real):** en el proyecto **Kashio-Finops**, el navegador de carpetas del bucket **`karia-library-files`** muestra cuatro prefijos de primer nivel: **`Contexto/`**, **`Output/`**, **`Prompt/`**, **`Template/`**. Dentro de **`Output/`** existen ocho carpetas **`Phase-1/`** … **`Phase-8/`** (PDLC KashioOS). En cada fase los objetos suelen incluir pares **PDF** (`application/pdf`) y **Markdown** (`text/markdown; charset=utf-8`) con prefijo numérico y título descriptivo, además del patrón que genera el endpoint de publicación (ver tabla siguiente).
+
+**Comportamiento del backend (código — estado actual del repositorio):** las subidas por `POST .../library/upload-url` arman el objeto como `{categoria}/{fileId}` con `fileId = lib-{Date.now()}-{nombreSeguro}` (`src/services/libraryService.ts`). La publicación de artefactos (`src/services/artifactService.ts`, `src/const/storage.ts`) usa la ruta **`Output/{segmento}/{fileId}.md|.pdf`**, donde **`segmento`** sale del campo **`gate`** del JSON (markdown) o de la cabecera **`gate`** (PDF). Si no se envía, el valor por defecto es **`G0`** (`DEFAULT_OUTPUT_GATE`). **No** hay hoy mapeo automático Gate→`Phase-n`, ni cabecera `phase-number`, ni el util `outputPhaseFolder` en este código.
+
+**Cómo alinear publicación con el bucket por fases:** en consola el contenido vive bajo **`Phase-1/` … `Phase-8/`**. Para que el Express escriba ahí sin cambiar código, el cliente puede enviar **`gate` igual al nombre de carpeta** (p. ej. `Phase-7`), porque ese valor se usa como segmento de ruta **literal**. Si se envían `G0`…`G5`, se crearán prefijos `Output/G0/`… que **no** coinciden con el árbol `Phase-*` salvo legado u otra convención acordada.
 
 ```
 karia-library-files/
 ├── Contexto/
-│   └── lib-{timestamp}-{nombreArchivo}
 ├── Prompt/
-├── Template/              # Plantillas .md / .pdf (p. ej. Plantilla_*, Artefacto_*)
-├── Output/
-│   ├── G0/
-│   ├── G1/
-│   ├── G2/
-│   ├── G3/
-│   ├── G4/
-│   └── G5/
-│       └── {nombreSeguro}_{iniciativa}_{versión}.md   (o .pdf)
+├── Template/
+└── Output/
+    ├── Phase-1/
+    ├── Phase-2/
+    ├── …
+    └── Phase-8/
+        └── (p. ej. .pdf y .md con prefijo numérico + nombre descriptivo)
 ```
 
 | Flujo API | Patrón de clave de objeto |
 |-----------|----------------------------|
 | `POST /karia-svc/v2/library/upload-url` | `{category}/{fileId}` con `fileId = lib-{Date.now()}-{filename}` |
-| `POST /karia-svc/v2/artifacts/publish` | `Output/{gate|G0}/{fileId}.md` |
-| `POST /karia-svc/v2/artifacts/publish-pdf` | `Output/{gate|G0}/{fileId}.pdf` |
-| `GET /karia-svc/v2/library/files` | Lista todo el bucket; deduplica versiones `.md` bajo `Output/` |
+| `POST /karia-svc/v2/artifacts/publish` | `Output/{gate o G0}/{fileId}.md` — para bucket vigente usar `gate: "Phase-n"` |
+| `POST /karia-svc/v2/artifacts/publish-pdf` | `Output/{gate o G0}/{fileId}.pdf` — misma nota con cabecera `gate` |
+| `GET /karia-svc/v2/library/files` | Lista todo el bucket; deduplica versiones `.md` bajo `Output/` por **nombre de archivo** (último segmento). Con varias carpetas `Phase-*`, dos objetos con el mismo nombre en fases distintas pueden tratarse como la misma “base” en la deduplicación actual (`libraryService.ts`) |
 
 **PostgreSQL y GCS:** la tabla **`library_file`** (ver `docs/DATABASE_AUDIT.md` y `database/schemaV2.sql`) está pensada para guardar **metadatos** (`storage_url`, nombre, tipo, gate, etc.) alineados con esas rutas. **El Express aún no inserta filas en `library_file`**; hoy la verdad operativa del listado es el bucket. La integración SQL-GCS es el siguiente paso natural.
 
@@ -135,7 +135,7 @@ No son “funciones exportadas”; son **handlers de rutas**. Agrupadas así:
 
 ## 5. Tablas PostgreSQL (modelo v2 unificado)
 
-Esquema objetivo para **BD nueva (v2)**: **4 tablas**, DDL canónico en **`migrations/003_v2_four_tables.sql`** y documentado en **`docs/DATABASE_AUDIT.md`**.
+Esquema objetivo para **BD nueva (v2)**: **4 tablas**, DDL en repo en **`database/schemaV2.sql`** y contexto en **`docs/DATABASE_AUDIT.md`**.
 
 | Tabla | Endpoints que la usan hoy (prefijo **`/karia-svc/v2/`**) | Notas |
 |-------|----------------------------------------|--------|
@@ -169,8 +169,8 @@ Convención: base URL = origen del backend (ej. `https://xxx.run.app` o `http://
 | POST | `/karia-svc/v2/library/upload-url` | Body JSON: firma URL **subida** hacia `{category}/lib-…` (§3.1) | Ninguna |
 | GET | `/karia-svc/v2/library/download/:fileId` | Firma URL **lectura** | Ninguna |
 | DELETE | `/karia-svc/v2/library/delete/:fileId` | Borra objeto | Ninguna |
-| POST | `/karia-svc/v2/artifacts/publish` | Body JSON: guarda `.md` en `Output/{gate}/...` + metadata objeto | Ninguna |
-| POST | `/karia-svc/v2/artifacts/publish-pdf` | Raw PDF + headers `artifactname`, etc. → guarda `.pdf` en `Output/{gate}/...` | Ninguna |
+| POST | `/karia-svc/v2/artifacts/publish` | Body JSON: guarda `.md` en `Output/{gate o G0}/...`; metadatos incluyen `gate` | Ninguna |
+| POST | `/karia-svc/v2/artifacts/publish-pdf` | Raw PDF + headers (`artifactname`, `gate`, …) → `Output/{gate o G0}/...` | Ninguna |
 
 Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete** en la misma petición en la que se confirma el objeto en GCS (evitar desalineación bucket ↔ SQL).
 
@@ -197,6 +197,10 @@ Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete*
 | POST | `/karia-svc/v2/artifact-definitions` | `artifact_definition` (INSERT) |
 | PUT | `/karia-svc/v2/artifact-definitions/:id` | `artifact_definition` (UPDATE) |
 | DELETE | `/karia-svc/v2/artifact-definitions/:id` | `artifact_definition` (DELETE) |
+
+### 6.6 Contrato HTTP detallado (solo PostgreSQL)
+
+Cuerpos JSON (camelCase), respuestas, códigos de error, campos ignorados en PATCH y notas de idempotencia en **DELETE**: **[`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md)**. La colección Postman **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas 2–5) debe mantenerse alineada con ese documento.
 
 ---
 
@@ -444,15 +448,11 @@ curl -X DELETE "https://deletelibraryfile-476648227615.us-central1.run.app?fileP
 | **`DB_SSL_REJECT_UNAUTHORIZED`** | No | Si vale **`false`** o **`0`**, Node **no** valida la cadena del certificado del servidor (`ssl.rejectUnauthorized: false`). Útil en **dev** ante `self-signed certificate in certificate chain`; en prod preferí **`DB_SSL_CA`**. Ver §8.4. |
 | **`GOOGLE_APPLICATION_CREDENTIALS`** | Solo si ADC no está disponible | Ruta al JSON de cuenta de servicio para **Storage** en local. |
 | **`GCS_BUCKET_NAME`** | No | ID del bucket de biblioteca/artefactos para rutas GCS. Por defecto **`karia-library-files`** (proyecto **Kashio FinOps**, región **us-central1**). Sobrescribir si el bucket vive bajo otro nombre o proyecto vinculado por IAM. |
-| **`GEMINI_API_KEY`** | Ver §9 | Documentada en `.env.example` y en **`cloudbuild.yaml`** como secreto; **el Express actual no la usa**. |
+| **`GEMINI_API_KEY`** | Ver §9 | Opcional en Cloud Run si la inyectáis como secreto; **el Express actual no la usa**. Ver `.env.example`. |
 
 ### 8.2 Importante sobre `GEMINI_API_KEY` en el contenedor Express
 
-El archivo **`cloudbuild.yaml`** incluye:
-
-`--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,...`
-
-Pero **el Express no importa `@google/generative-ai` ni lee `process.env.GEMINI_API_KEY`**. La variable está preparada para una futura integración en el mismo servicio o para consistencia con otros pipelines; las llamadas a Gemini en este repo están en **`functions/api`**, que usa **Secret Manager desde código**.
+Si en **Cloud Run** configuráis `--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,...` (consola o `gcloud run deploy`), el valor llegará al proceso, pero **el Express no importa `@google/generative-ai` ni lee `process.env.GEMINI_API_KEY`**. Las llamadas a Gemini en este repo están en **`functions/api`**, que usa **Secret Manager desde código**.
 
 Para usar Gemini **solo desde Express**, habría que añadir rutas y leer `GEMINI_API_KEY` (o llamar a Vertex/Gemini con la cuenta de servicio).
 
@@ -482,33 +482,33 @@ Node (`pg` + TLS) valida la cadena del certificado del servidor. Si el proveedor
 
 ---
 
-## 9. Despliegue del backend en GCP (Cloud Run vía Cloud Build)
+## 9. Despliegue del backend en GCP (Cloud Run desde `Dockerfile`)
 
 ### Prerrequisitos
 
-1. Proyecto GCP con APIs: **Cloud Run**, **Cloud Build**, **Artifact Registry** (o Container Registry), **Secret Manager**, **Cloud Storage**. La base de datos es **PostgreSQL** con **conexión directa** desde Cloud Run (URI en `ConnectionString_Karia`); no se usa Cloud SQL como servicio gestionado.
+1. Proyecto GCP con APIs: **Cloud Run**, **Secret Manager**, **Cloud Storage** (y **Artifact Registry** si preferís build con imagen intermedia). La base de datos es **PostgreSQL** con **conexión directa** desde Cloud Run (URI en `ConnectionString_Karia`); no se usa Cloud SQL como servicio gestionado.
 2. En **Kashio FinOps** (`Kashio-Finops`): bucket **`karia-library-files`** creado en **us-central1**, clase Standard, no público; la cuenta de servicio de Cloud Run debe tener **lectura/escritura** sobre ese bucket. Definir **`GCS_BUCKET_NAME=karia-library-files`** en el servicio si no se usa el default del código. Si Cloud Run se despliega en un **proyecto distinto** al que aloja el bucket, esa cuenta de servicio necesita IAM sobre `karia-library-files` en el proyecto del bucket (p. ej. **Storage Object Admin**).
-3. Secretos en **Secret Manager** (nombres alineados con `cloudbuild.yaml`):
+3. Secretos en **Secret Manager** (referencias típicas al montarlos en Cloud Run):
    - **`gemini-api-key`** en proyecto **Kashio-Finops** (versión **1** o `latest`; ver §10.1).
    - **`aria-database-url`** (u otro nombre acordado) → contenido = **URI PostgreSQL completa** (mismo valor que `ConnectionString_Karia` en local). Suele vivir en el mismo proyecto que el Cloud Run que desplegáis, o referenciarlo en forma cross-project como el secreto Gemini.
 
-### Comando habitual
+### Comando habitual (build desde fuente con el `Dockerfile`)
 
 Desde la carpeta `aria-backend`:
 
 ```bash
-gcloud builds submit --config=cloudbuild.yaml .
+gcloud run deploy aria-backend --source . --region=us-central1
 ```
 
-### Qué hace `cloudbuild.yaml`
+Ajustá flags según política: `--allow-unauthenticated`, `--memory`, `--cpu`, `--timeout`, `--min-instances`, y sobre todo **`--set-secrets`** / **`--set-env-vars`** para alinear el servicio con lo que antes documentaba el pipeline (BD, bucket, `PROJECT_ID`).
 
-1. **`docker build`** con `Dockerfile` → etiquetas `gcr.io/$PROJECT_ID/aria-backend:$COMMIT_SHA` y `:latest`.
-2. **`docker push`** de esas etiquetas.
-3. **`gcloud run deploy aria-backend`** en `us-central1`:
-   - `--allow-unauthenticated` (API pública; endurecer según política de seguridad).
-   - Límites: memoria 1 Gi, CPU 1, timeout 300 s, puerto 8080.
-   - **`--set-secrets`**: inyecta `GEMINI_API_KEY` y `ConnectionString_Karia` desde Secret Manager.
-   - Si **Cloud Run** está en el **mismo** proyecto que el secreto (`Kashio-Finops`), basta `GEMINI_API_KEY=gemini-api-key:latest`. Si el servicio está en **otro** proyecto pero el secreto vive solo en FinOps, usá la forma cross-project: `GEMINI_API_KEY=projects/476648227615/secrets/gemini-api-key:latest` y concedé a la cuenta de servicio de ejecución el rol **Secret Manager Secret Accessor** sobre ese secreto en FinOps.
+### Qué debéis configurar en el servicio Cloud Run
+
+1. **Imagen**: generada por Cloud Run al usar `--source .` con el **`Dockerfile`** (multi-stage → `node dist/index.js`, puerto **8080** en contenedor).
+2. **Red / acceso**: `--allow-unauthenticated` solo si la API debe ser pública; endurecer según política.
+3. **Recursos**: p. ej. memoria 1 Gi, CPU 1, timeout 300 s (valores orientativos).
+4. **`--set-secrets`**: inyectar al menos `ConnectionString_Karia` desde el secreto de URI (p. ej. `aria-database-url`). Opcional: `GEMINI_API_KEY` desde `gemini-api-key` (el Express no la usa hoy; ver §8.2).
+5. Si **Cloud Run** está en el **mismo** proyecto que el secreto (`Kashio-Finops`), basta `GEMINI_API_KEY=gemini-api-key:latest`. Si el servicio está en **otro** proyecto pero el secreto vive solo en FinOps, usá la forma cross-project: `GEMINI_API_KEY=projects/476648227615/secrets/gemini-api-key:latest` y concedé a la cuenta de servicio de ejecución el rol **Secret Manager Secret Accessor** sobre ese secreto en FinOps.
 
 ### Dockerfile vs frontend embebido
 
@@ -540,7 +540,7 @@ Además de **`gemini-api-key`**, suelen existir secretos para **cadena PostgreSQ
 | Nombre del secreto | Tipo | Quien lo consume | Descripcion |
 |--------------------|------|-----------------|-------------|
 | **`db-password`** | Credencial BD | Backend Express (dentro de `ConnectionString_Karia`) | Contrasena del servidor PostgreSQL. Se usa componiendola dentro de la URI de conexion directa. |
-| **`aria-database-url`** | URI conexion | Cloud Run backend | URI PostgreSQL completa (`postgresql://usuario:pass@host:5432/bd`). Se inyecta como `ConnectionString_Karia` al desplegarse via `cloudbuild.yaml`. Mismo valor que la variable local en `.env`. |
+| **`aria-database-url`** | URI conexion | Cloud Run backend | URI PostgreSQL completa (`postgresql://usuario:pass@host:5432/bd`). Se inyecta como `ConnectionString_Karia` vía `--set-secrets` en la configuración del servicio Cloud Run. Mismo valor que la variable local en `.env`. |
 | **`connection-buxeh45github-...`** | Token OAuth | Cloud Build | Credencial de conexion entre Cloud Build y el repositorio GitHub (`buxeh45`). Permite disparar builds automaticos desde push/PR. |
 | **`bitbucketCloudApiToken-*`** | API Token | Cloud Build / integraciones | Token de API de Bitbucket Cloud. Existen multiples versiones desplegadas en `us-central1` y `europe-west1` para distintos ambientes o pipelines. |
 | **`bitbucketCloudWebhook-*`** | Webhook secret | Cloud Build / webhooks | Secreto de verificacion de webhooks entrantes desde Bitbucket Cloud. Multiples instancias por region y ambiente. |
@@ -562,14 +562,14 @@ const [version] = await secretClient.accessSecretVersion({
 const apiKey = version.payload.data.toString();
 ```
 
-**Desde Cloud Run vía `cloudbuild.yaml`** (mismo proyecto que el secreto FinOps):
-```yaml
-'--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,ConnectionString_Karia=aria-database-url:latest'
-'--set-env-vars=GCS_BUCKET_NAME=karia-library-files,PROJECT_ID=kashio-finops'
+**Ejemplo en `gcloud run deploy`** (mismo proyecto que el secreto FinOps):
+```bash
+--set-secrets=GEMINI_API_KEY=gemini-api-key:latest,ConnectionString_Karia=aria-database-url:latest \
+--set-env-vars=GCS_BUCKET_NAME=karia-library-files,PROJECT_ID=kashio-finops
 ```
 Si **Cloud Run** está en otro proyecto y el secreto Gemini solo existe en FinOps, referencialo en forma cross-project:
-```yaml
-'--set-secrets=GEMINI_API_KEY=projects/kashio-finops/secrets/gemini-api-key:latest,...'
+```bash
+--set-secrets=GEMINI_API_KEY=projects/kashio-finops/secrets/gemini-api-key:latest,...
 ```
 El valor llega como variable de entorno al proceso Node; **el Express no** llama a Secret Manager para Gemini (solo lo haría si implementáis esa ruta).
 
@@ -587,17 +587,17 @@ copy .env.example .env   # Windows: configurar ConnectionString_Karia al menos p
 
 ---
 
-## 12. Migraciones SQL
+## 12. DDL / esquema SQL (v2)
 
-Para una **base de datos nueva (vacía)** en v2, usar el DDL unificado:
+Para aplicar el esquema v2 al Postgres de destino:
 
 ```bash
-psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
+psql "$ConnectionString_Karia" -f database/schemaV2.sql
 ```
 
-Incluye **`initiative`**, **`intake_request`**, **`artifact_definition`** y **`library_file`** (catálogo GCS; integración Express pendiente). Detalle de bucket y tablas: **`docs/DATABASE_AUDIT.md`**.
+Incluye **`initiative`**, **`intake_request`**, **`artifact_definition`** y **`library_file`** (catálogo GCS; integración Express pendiente). Detalle de bucket y tablas: **`docs/DATABASE_AUDIT.md`**. En **BD totalmente vacía**, `schemaV2.sql` asume la función `update_updated_at_column()`; si no existe, creala primero (fragmento en **`docs/DATABASE_AUDIT.md`**, sección DDL).
 
-Si aún tenéis scripts legacy `001_initial_schema.sql` / `002_aria_current_schema.sql` en otro branch, no mezclarlos con **`003`** sobre la misma BD sin revisión (riesgo de `DROP`/`CREATE` duplicado).
+No mezclar con dumps legacy (`schemaV1.sql` u otros scripts de otro branch) sobre la misma BD sin revisión (riesgo de `DROP`/`CREATE` duplicado).
 
 ---
 
@@ -609,10 +609,10 @@ Si aún tenéis scripts legacy `001_initial_schema.sql` / `002_aria_current_sche
 | **Endpoints HTTP de Cloud Run Functions (8 activos)** | **`docs/DEPLOYED_ENDPOINTS.md`** + §7.1 / §7.2 (URLs en Kashio-Finops, bodies, ejemplos curl) |
 | Biblioteca de ficheros | Bucket GCS + IAM + estructura §3.1 + rutas §6.2 (Express) y §7.2 (Cloud Functions) |
 | Catálogo SQL de biblioteca | Tabla `library_file` (§5) + integración pendiente en endpoints |
-| CRUD iniciativas / definiciones | `ConnectionString_Karia` + migración **`003`** (§12) |
+| CRUD iniciativas / definiciones | `ConnectionString_Karia` + DDL **`database/schemaV2.sql`** (§12) |
 | Lectura intakes | Tabla poblada + GET `/karia-svc/v2/intakes` |
 | Gemini | **`functions/api`** + secreto **`gemini-api-key`** en **Kashio-Finops** (§10.1); **Express** no usa Gemini en código hasta implementarlo |
-| Producción Cloud Run | `cloudbuild.yaml` + secretos + cuenta de servicio con Storage |
+| Producción Cloud Run | Servicio Cloud Run (`Dockerfile` / `--source`) + secretos + cuenta de servicio con Storage |
 
 ---
 

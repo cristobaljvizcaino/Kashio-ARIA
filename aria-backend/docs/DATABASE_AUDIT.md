@@ -21,7 +21,7 @@ El backend Express usa el bucket de biblioteca configurado por **`GCS_BUCKET_NAM
 
 ### Estructura de carpetas (objeto = `path` dentro del bucket)
 
-Vista real en consola (abril 2026): bajo **`Template/`** conviven plantillas Markdown (`lib-{timestamp}-Plantilla_…`, `Artefacto_…`) y PDFs; **`Output/`** incluye subcarpetas por gate (**G1**–**G5**; **G0** cuando aplica publicación desde ARIA).
+Vista real en consola (2026): bajo **`Template/`** conviven plantillas Markdown (`lib-{timestamp}-Plantilla_…`, `Artefacto_…`) y PDFs; **`Output/`** incluye subcarpetas por fase del PDLC KashioOS: **`Phase-1/`** … **`Phase-8/`**.
 
 ```
 karia-library-files/
@@ -30,21 +30,19 @@ karia-library-files/
 ├── Prompt/                      # Categoría "Prompt"
 ├── Template/                    # Categoría "Template"
 └── Output/                      # Artefactos generados / publicados por ARIA
-    ├── G0/
-    ├── G1/
-    ├── G2/
-    ├── G3/
-    ├── G4/
-    └── G5/
+    ├── Phase-1/
+    ├── Phase-2/
+    ├── …
+    └── Phase-8/
         └── {nombreSeguro}_{iniciativa}_{versión}.md   (o .pdf)
 ```
 
 | Origen en código | Patrón de objeto | Notas |
 |------------------|------------------|--------|
 | `POST /api/library/upload-url` | `{category}/{fileId}` | `category` = una de: `Contexto`, `Prompt`, `Template`, `Output` (o la que envíe el cliente). `fileId` = `lib-{timestamp}-{filename}`. |
-| `POST /api/artifacts/publish` | `Output/{gate}/{fileId}.md` | `gate` por defecto `G0` si no viene. |
-| `POST /api/artifacts/publish-pdf` | `Output/{gate}/{fileId}.pdf` | Metadatos en cabeceras HTTP. |
-| `GET /api/library/files` | Todo el bucket | Agrupa versiones `.md` bajo `Output/` y lista el resto como fuentes. |
+| `POST /api/artifacts/publish` | `Output/{gate o G0}/{fileId}.md` | **Código actual:** `gate` en body; default `G0` (`DEFAULT_OUTPUT_GATE`). Para alinear con bucket **`Phase-1`…`Phase-8`**, enviar `gate: "Phase-n"` como segmento literal. |
+| `POST /api/artifacts/publish-pdf` | `Output/{gate o G0}/{fileId}.pdf` | Cabecera `gate`; misma nota que la fila anterior. |
+| `GET /api/library/files` | Todo el bucket | Agrupa versiones `.md` bajo `Output/` por nombre de archivo (último segmento); ver limitación si hay el mismo nombre en varias `Phase-*`. |
 
 **Regla de integridad con `library_file`:** cada vez que un flujo confirme un objeto en GCS, conviene **INSERT/UPDATE** en `library_file` con el mismo `storage_url` (`gs://karia-library-files/...` u otro valor de `GCS_BUCKET_NAME`) y `file_name` / `file_type` / `gate` coherentes. Hoy **`index.js` no escribe en `library_file`**; la tabla está lista para una integración rápida en los mismos endpoints.
 
@@ -75,9 +73,7 @@ Los **Gates** siguen modelados con la columna **`artifact_definition.gate`** (`G
 
 ## DDL — aplicar sobre la BD nueva (vacía)
 
-El mismo SQL está versionado en el repo como:
-
-**`aria-backend/migrations/003_v2_four_tables.sql`**
+El archivo versionado en el repo es **`aria-backend/database/schemaV2.sql`** (estilo pg_dump). El fragmento siguiente es **referencia autocontenida** (extensión, función de trigger y tablas) útil si partís de cero; alinearlo con `schemaV2.sql` antes de mezclar con otras fuentes.
 
 ```sql
 -- ========================================
@@ -208,7 +204,7 @@ CREATE TRIGGER update_library_file_updated_at
 Ejecutar, por ejemplo:
 
 ```bash
-psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
+psql "$ConnectionString_Karia" -f database/schemaV2.sql
 ```
 
 ---
@@ -220,7 +216,7 @@ psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
 ┌─────────────────────────┐           ┌──────────────────────────────┐
 │ karia-library-files/    │           │ initiative                   │
 │  Contexto/ Prompt/ …    │  ◀──────▶ │ intake_request               │
-│  Output/G0 … G5/        │  (futuro  │ artifact_definition          │
+│  Output/Phase-1 … 8/    │  (futuro  │ artifact_definition          │
 │                         │   sync)  │ library_file                 │
 └─────────────────────────┘           └──────────────────────────────┘
 ```
@@ -230,11 +226,11 @@ psql "$ConnectionString_Karia" -f migrations/003_v2_four_tables.sql
 ## Pasos rápidos
 
 1. Crear BD vacía en Cloud SQL (o local).
-2. `psql` con `003_v2_four_tables.sql`.
+2. `psql` con `database/schemaV2.sql` (o el bloque DDL de arriba en BD vacía si aún no existe la función de trigger).
 3. Migrar datos viejos solo de `initiative`, `intake_request`, `artifact_definition` si aplica (y `library_file` desde `aria_db` si queréis conservar metadatos históricos).
 4. Definir `ConnectionString_Karia` en el entorno del backend apuntando a la BD nueva.
 5. Integrar escritura en `library_file` en los endpoints GCS cuando toque (no bloquea el arranque del API).
 
 ---
 
-*Actualizado con bucket GCS, estructura de carpetas y 4 tablas (sin `phase`). DDL canónico: `migrations/003_v2_four_tables.sql`.*
+*Actualizado con bucket GCS, estructura de carpetas y 4 tablas (sin `phase`). DDL en repo: `database/schemaV2.sql`.*

@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Karia ARIA Backend",
-    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo fijo `{{apiPrefix}}` (por defecto `/karia-svc/v2`).\n\nAjusta la variable **baseUrl** (ej. `http://localhost:3000`). Los bodies de ejemplo son orientativos; revisa tipos en `src/types/`.",
+    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -47,7 +47,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/health/db",
-            "description": "JSON con resultado de `SELECT 1` (conexión Postgres)."
+            "description": "Prueba `SELECT 1` contra Postgres. Siempre **HTTP 200** con JSON:\n- éxito: `{ \"success\": true }`\n- fallo: `{ \"success\": false, \"error\": \"...\" }` (sin `ConnectionString_Karia`, error de red, SSL, etc.).\nSin query ni body."
           },
           "response": []
         }
@@ -61,7 +61,8 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives"
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives",
+            "description": "`SELECT * FROM initiative ORDER BY created_at DESC`. Respuesta: **array** de objetos (camelCase). No incluye `createdAt`/`updatedAt` en el JSON de salida."
           },
           "response": []
         },
@@ -75,7 +76,7 @@
               "raw": "{\n  \"id\": \"{{initiativeId}}\",\n  \"name\": \"Mi iniciativa\",\n  \"type\": \"Run\",\n  \"product\": null,\n  \"startDate\": null,\n  \"endDate\": null,\n  \"quarter\": null,\n  \"status\": null,\n  \"intakeRequestId\": null,\n  \"currentGateId\": \"G0\",\n  \"pipelineActivated\": false,\n  \"artifacts\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/initiatives",
-            "description": "Mínimo requerido por el servicio: **id** y **name**. `type` debe ser `Run` o `Change` (obligatorio en INSERT DB)."
+            "description": "Servicio valida **id** y **name** (400 si faltan). En `schemaV2.sql`, **`type` es nullable**; si se omite queda NULL. Valores distintos de **Run** / **Change** violan el CHECK y suelen devolver 500.\nRecomendación: enviar siempre `type` Run|Change. Opcionales: `product`, `currentGateId` (default G0 en código), fechas, `quarter`, `status`, `intakeRequestId`, `pipelineActivated` (default false), `artifacts` (array, default []).\n200: objeto Initiative creado."
           },
           "response": []
         },
@@ -89,7 +90,7 @@
               "raw": "{\n  \"name\": \"Nombre actualizado\",\n  \"status\": \"active\"\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}",
-            "description": "Body: campos parciales (`InitiativeUpdate`)."
+            "description": "PATCH semántico: solo se actualizan claves presentes. Válidas: `name`, `product`, `currentGateId`, `type`, `startDate`, `endDate`, `quarter`, `status`, `intakeRequestId`, `pipelineActivated`, `artifacts`. El `id` del body no cambia la fila (usa el de la URL).\n404 si no existe; 400 si el objeto está vacío."
           },
           "response": []
         },
@@ -98,7 +99,8 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}"
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}",
+            "description": "Sin body. Respuesta 200 siempre `{ \"success\": true }` (incluso si el id no existía — DELETE idempotente en el código actual)."
           },
           "response": []
         }
@@ -113,7 +115,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/intakes",
-            "description": "Lista `intake_request`."
+            "description": "Solo **GET**. `SELECT * FROM intake_request ORDER BY created_at DESC`. Array de intakes (camelCase); `createdAt` es solo fecha **YYYY-MM-DD**. No hay POST/PUT/DELETE en Express."
           },
           "response": []
         }
@@ -127,7 +129,8 @@
           "request": {
             "method": "GET",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions"
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
+            "description": "`ORDER BY gate, name`. Array con `id`, `gate`, `name`, `initiativeType`, `predecessorIds`, `description`, `mandatory`, `area`, `createdAt`, `updatedAt` (ISO)."
           },
           "response": []
         },
@@ -141,7 +144,7 @@
               "raw": "{\n  \"id\": \"{{artifactDefId}}\",\n  \"gate\": \"G1\",\n  \"name\": \"Documento de visión\",\n  \"description\": \"Opcional\",\n  \"initiativeType\": \"Both\",\n  \"predecessorIds\": [],\n  \"mandatory\": false,\n  \"area\": \"Producto\"\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "Mínimo: **id**, **gate**, **name**."
+            "description": "400 sin **id**, **gate** o **name**.\nOpcionales: `initiativeType` (default Both), `predecessorIds` (array, default []), `description`, `mandatory` (default false), `area` (default Producto).\n200: objeto creado con `createdAt`/`updatedAt`."
           },
           "response": []
         },
@@ -154,7 +157,8 @@
               "mode": "raw",
               "raw": "{\n  \"description\": \"Texto actualizado\",\n  \"mandatory\": true\n}"
             },
-            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}"
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}",
+            "description": "Campos actualizables si van en el JSON: `gate`, `name`, `initiativeType`, `description`, `mandatory`, `area`, `predecessorIds` (array → JSON en BD). 404 si no existe; 400 sin campos."
           },
           "response": []
         },
@@ -163,7 +167,8 @@
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}"
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefId}}",
+            "description": "200 `{ \"success\": true }` siempre (misma idempotencia que DELETE initiative)."
           },
           "response": []
         }

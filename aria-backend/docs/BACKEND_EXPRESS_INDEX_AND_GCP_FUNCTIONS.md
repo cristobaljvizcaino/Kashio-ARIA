@@ -1,5 +1,7 @@
 # ARIA backend: Express (TypeScript) y relación con funciones GCP
 
+> Inventario general del backend: **`BACKEND_REFERENCE.md`**. Este archivo solo detalla el mapa Express ↔ Cloud Functions.
+
 Este documento explica el **servidor Express** (`aria-backend/src/index.ts`), el **acceso PostgreSQL** (`aria-backend/src/config/database.ts`) y cómo se **relacionan (o no)** con las **8 funciones HTTP** desplegadas en Kashio-Finops (`functions/api` + `functions/library`).
 
 ---
@@ -53,15 +55,17 @@ El prefijo **`/karia-svc/v2/`** está definido en **`src/index.ts`**. **`GET /he
 
 | Método y ruta | Almacén / recurso | Qué hace |
 |---------------|-------------------|----------|
-| `GET /karia-svc/v2/library/files` | **GCS** bucket | Lista objetos; fusiona “fuente” con outputs `.md` deduplicados por versión semántica en nombre (`_vX.Y.md`). Metadatos custom (iniciativa, artefacto, gate, etc.) en la respuesta. |
-| `GET /karia-svc/v2/artifacts/files` | **GCS** `Output/` | Lista nombres de archivo bajo prefijo `Output/`. |
+| `GET /karia-svc/v2/library/files` | **GCS** bucket | Lista objetos; fusiona “fuente” con outputs `.md` deduplicados por versión semántica en nombre (`_vX.Y.md`). La deduplicación usa el **último segmento** del nombre; con subcarpetas `Phase-*` puede agrupar mal si dos fases comparten el mismo nombre de archivo. Metadatos custom (`gate`, iniciativa, artefacto, etc.) en la respuesta. |
+| `GET /karia-svc/v2/artifacts/files` | **GCS** `Output/` | Lista el **último segmento** de cada objeto bajo `Output/` (no devuelve hoy `Phase-7/archivo.md` completo). |
 | `POST /karia-svc/v2/library/upload-url` | **GCS** | Genera `fileId`, ruta `category/fileId`, URL firmada **write** (15 min). Valida categoría (`Contexto`, `Output`, `Prompt`, `Template`). |
 | `GET /karia-svc/v2/library/download/:fileId` | **GCS** | Busca el primer objeto cuyo nombre **contiene** `fileId`; URL firmada **read**. |
 | `DELETE /karia-svc/v2/library/delete/:fileId` | **GCS** | Igual búsqueda por `includes`; elimina el objeto encontrado. |
-| `POST /karia-svc/v2/artifacts/publish` | **GCS** | Escribe markdown en `Output/{gate}/{fileId}.md` con metadatos de publicación. |
-| `POST /karia-svc/v2/artifacts/publish-pdf` | **GCS** | Cuerpo raw PDF; nombres desde headers; escribe en `Output/{gate}/{fileId}.pdf`. |
+| `POST /karia-svc/v2/artifacts/publish` | **GCS** | Escribe markdown en `Output/{gate o G0}/{fileId}.md` (body `gate`; default `G0`). Para rutas `Phase-*` del bucket, enviar `gate: "Phase-n"`. |
+| `POST /karia-svc/v2/artifacts/publish-pdf` | **GCS** | Cuerpo raw PDF; nombres desde headers; cabecera `gate` (misma convención que publish). |
 
 ### 3.2 Base de datos (PostgreSQL) — tabla por endpoint
+
+**Contrato HTTP (body, respuestas, errores):** [`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md). Lo siguiente es un mapa resumido; no sustituye la referencia de API.
 
 | Método y ruta | Tabla SQL | Operación | Finalidad de la tabla / del endpoint |
 |---------------|-----------|-----------|--------------------------------------|

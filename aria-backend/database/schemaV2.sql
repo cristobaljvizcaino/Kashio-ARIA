@@ -5,20 +5,23 @@
 -- DROP TABLE public.artifact_definition;
 
 CREATE TABLE public.artifact_definition (
-	id varchar(50) NOT NULL,
-	gate varchar(10) NOT NULL,
+	id bigserial NOT NULL,
+	public_id uuid DEFAULT gen_random_uuid() NOT NULL,
+	fase int2 NOT NULL,
 	"name" varchar(500) NOT NULL,
 	initiative_type varchar(20) DEFAULT 'Both'::character varying NULL,
-	predecessor_ids jsonb DEFAULT '[]'::jsonb NULL,
+	predecessor_names jsonb DEFAULT '[]'::jsonb NULL,
 	description text NULL,
 	mandatory bool DEFAULT false NULL,
 	area varchar(50) DEFAULT 'Producto'::character varying NULL,
-	created_at timestamp DEFAULT now() NULL,
-	updated_at timestamp DEFAULT now() NULL,
-	CONSTRAINT artifact_definition_initiative_type_check CHECK (((initiative_type)::text = ANY ((ARRAY['Change'::character varying, 'Run'::character varying, 'Both'::character varying])::text[]))),
-	CONSTRAINT artifact_definition_pkey PRIMARY KEY (id)
+	created_at timestamptz DEFAULT now() NULL,
+	updated_at timestamptz DEFAULT now() NULL,
+	CONSTRAINT artifact_definition_fase_check CHECK (((fase >= 1) AND (fase <= 8))),
+	CONSTRAINT artifact_definition_initiative_type_check CHECK (((initiative_type)::text = ANY (ARRAY[('Change'::character varying)::text, ('Run'::character varying)::text, ('Both'::character varying)::text]))),
+	CONSTRAINT artifact_definition_pkey PRIMARY KEY (id),
+	CONSTRAINT artifact_definition_public_id_key UNIQUE (public_id)
 );
-CREATE INDEX idx_artdef_gate ON public.artifact_definition USING btree (gate);
+CREATE INDEX idx_artdef_fase ON public.artifact_definition USING btree (fase);
 CREATE INDEX idx_artdef_type ON public.artifact_definition USING btree (initiative_type);
 
 -- Table Triggers

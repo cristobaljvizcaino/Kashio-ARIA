@@ -19,14 +19,15 @@ aria-backend/
 │   ├── types/          # interfaces compartidas
 │   ├── utils/          # helpers (sanitize, asyncHandler, sql)
 │   └── index.ts        # entry: app, mount, listen
-├── docs/               # documentación funcional / arquitectura
-├── database/           # DDL Postgres (schemaV2.sql)
-├── scripts/            # utilitarios operativos (vacío)
+├── docs/               # documentación (empezar por BACKEND_REFERENCE.md)
+├── database/           # DDL Postgres (schemaV2.sql vigente; schemaV1.sql legacy)
 ├── functions/          # Cloud Functions (despliegue separado, NO se incluye en la imagen)
 ├── Dockerfile
 ├── tsconfig.json
 └── package.json
 ```
+
+**Docs:** la referencia única amplia es `docs/BACKEND_REFERENCE.md`. Endpoints Express **solo PostgreSQL** (health/db, initiatives, intakes, artifact-definitions): `docs/API_DATABASE_ENDPOINTS.md`. Lo demás es tema específico (`DATABASE_AUDIT.md`, `DEPLOYED_ENDPOINTS.md`, `BACKEND_EXPRESS_INDEX_AND_GCP_FUNCTIONS.md`).
 
 ---
 
@@ -98,11 +99,11 @@ curl http://localhost:3000/karia-svc/v2/initiatives
 
 ## Build / despliegue
 
-`Dockerfile` es **multi-stage**: compila TS en una etapa y ejecuta `node dist/index.js` con dependencias de producción en la imagen final. `cloudbuild.yaml` ya hace `gcloud run deploy aria-backend` en `us-central1` y mantiene los mismos secretos / env vars (`GEMINI_API_KEY`, `ConnectionString_Karia`, `GCS_BUCKET_NAME`, `PROJECT_ID`).
+`Dockerfile` es **multi-stage**: compila TS en una etapa y ejecuta `node dist/index.js` con dependencias de producción en la imagen final. En **Cloud Run**, configura secretos y variables de entorno en el servicio (p. ej. `ConnectionString_Karia`, `GCS_BUCKET_NAME`, `PROJECT_ID`; ver `docs/BACKEND_REFERENCE.md`).
 
 ```bash
-# Cloud Build
-gcloud builds submit --config=cloudbuild.yaml .
+# Cloud Run (build desde este directorio con el Dockerfile)
+gcloud run deploy aria-backend --source . --region=us-central1
 
 # O Docker local
 docker build -t aria-backend .

@@ -40,9 +40,8 @@ tmp
 temp
 *.tmp
 
-# The serverless Cloud Functions and SQL migrations are deployed separately;
-# they are NOT part of the Express API container image.
+# Cloud Functions, DDL en database/ y scripts locales se despliegan o ejecutan aparte;
+# no forman parte de la imagen del API Express.
 functions/
 database/
-migrations/
 scripts/

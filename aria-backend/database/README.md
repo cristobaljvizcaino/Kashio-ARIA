@@ -12,3 +12,5 @@ DDL PostgreSQL del backend ARIA. Estos archivos **no** se incluyen en la imagen 
 ```bash
 psql "$ConnectionString_Karia" -f database/schemaV2.sql
 ```
+
+**BD totalmente vacía:** `schemaV2.sql` define triggers que llaman a `update_updated_at_column()` pero no crean esa función en el archivo. Creala antes (por ejemplo con el bloque inicial del DDL en `docs/DATABASE_AUDIT.md`) o aplicá ese fragmento completo y luego alineá con este dump.
