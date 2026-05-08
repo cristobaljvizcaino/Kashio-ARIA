@@ -162,6 +162,32 @@ const REF_PUBLIC_ID_REGEX =
  * Resuelve un predecesor por `public_id` (UUID) o por coincidencia exacta de `name`.
  * Devuelve el `name` canónico en BD o `null` si no existe.
  */
+/**
+ * Indica si ya existe una fila con el mismo `name` (coincidencia exacta tras trim).
+ * `excludePublicId`: al actualizar, ignorar la fila con ese `public_id`.
+ */
+export async function existsByExactName(
+  name: string,
+  excludePublicId?: string,
+): Promise<boolean> {
+  const trimmed = name.trim();
+  if (!trimmed) return false;
+  if (excludePublicId) {
+    const result = await query<{ ok: string }>(
+      `SELECT 1 AS ok FROM artifact_definition
+        WHERE name = $1 AND public_id <> $2::uuid
+        LIMIT 1`,
+      [trimmed, excludePublicId],
+    );
+    return result.rows.length > 0;
+  }
+  const result = await query<{ ok: string }>(
+    `SELECT 1 AS ok FROM artifact_definition WHERE name = $1 LIMIT 1`,
+    [trimmed],
+  );
+  return result.rows.length > 0;
+}
+
 export async function findNameByRef(ref: string): Promise<string | null> {
   const trimmed = ref.trim();
   if (!trimmed) return null;
@@ -190,7 +216,7 @@ export async function insert(input: ArtifactDefinitionInsertPayload): Promise<Ar
       input.publicId ?? null,
       input.phase,
       input.name,
-      input.initiativeType ?? 'Both',
+      input.initiativeType,
       JSON.stringify(input.predecessorNames ?? []),
       input.description ?? null,
       input.mandatory ?? false,

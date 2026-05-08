@@ -27,11 +27,12 @@ export interface ArtifactDefinition {
  * hace falta al menos uno. Si ambos van y no coinciden → 400.
  * `predecessorNames`: cada elemento puede ser `publicId` (UUID) o `name` exacto de un
  * artefacto existente; se normaliza al `name` guardado en BD.
- * `initiativeType`: opcional en POST; si se envía debe ser **`Run`**, **`Change`** o **`Both`**
- * (mayúsculas indistintas). Si se omite → **`Both`**.
+ * `initiativeType`: opcional en POST; si se envía debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas). Si se omite → **`Both`**.
  */
 export interface ArtifactDefinitionInput {
   phase?: number;
+  /** @deprecated Usar `phase`. Si coexisten `phase` y `fase`, deben resolver al mismo 1–8. */
+  fase?: unknown;
   /** Etiqueta de fase (misma que `phaseLabel` en respuesta), ej. `Backend Development`. */
   phaseName?: string;
   name: string;
@@ -46,7 +47,7 @@ export interface ArtifactDefinitionInput {
 /** Parámetros ya normalizados para INSERT (phase 1–8 resuelta; sin `phaseName`). */
 export type ArtifactDefinitionInsertPayload = Omit<
   ArtifactDefinitionInput,
-  'phaseName' | 'phase'
+  'phaseName' | 'phase' | 'fase'
 > & {
   phase: number;
 };
@@ -59,6 +60,8 @@ export type ArtifactDefinitionUpdate = Partial<
 > & {
   initiativeType?: ArtifactInitiativeType;
   phaseName?: string;
+  /** @deprecated Usar `phase`. */
+  fase?: unknown;
 };
 
 /** Forma cruda devuelta por `pg` (snake_case y `id` puede llegar como string desde bigint). */

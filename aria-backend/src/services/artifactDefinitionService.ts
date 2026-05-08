@@ -47,14 +47,14 @@ const INITIATIVE_MAP: Record<string, ArtifactInitiativeType> = {
 function parseInitiativeType(raw: unknown): ArtifactInitiativeType | undefined {
   const s = firstQueryString(raw);
   if (!s) return undefined;
-  const v = INITIATIVE_MAP[s.toLowerCase()];
+  const v = INITIATIVE_MAP[s.trim().toLowerCase()];
   if (!v) {
     throw new HttpError(400, 'initiativeType must be Run, Change or Both');
   }
   return v;
 }
 
-/** JSON body: acepta solo Run / Change / Both (case-insensitive). */
+/** JSON body: acepta Run / Change / Both en cualquier capitalización. */
 function parseInitiativeTypeBody(raw: unknown): ArtifactInitiativeType {
   if (raw === undefined || raw === null) {
     throw new HttpError(400, 'initiativeType must be Run, Change or Both');
@@ -70,10 +70,30 @@ function parseInitiativeTypeBody(raw: unknown): ArtifactInitiativeType {
   return v;
 }
 
-/** POST: omite o null → `Both`; si viene valor, debe ser válido. */
+/** POST: omite o null → `Both`; si viene valor debe ser válido. */
 function initiativeTypeForCreate(raw: unknown): ArtifactInitiativeType {
   if (raw === undefined || raw === null) return 'Both';
   return parseInitiativeTypeBody(raw);
+}
+
+function mergeLegacyFaseForPhase(input: {
+  phase?: unknown;
+  phaseName?: unknown;
+  fase?: unknown;
+}): { phase?: unknown; phaseName?: unknown } {
+  const hasPhase =
+    input.phase !== undefined && input.phase !== null && String(input.phase).trim() !== '';
+  const hasFase =
+    input.fase !== undefined && input.fase !== null && String(input.fase).trim() !== '';
+  if (hasPhase && hasFase) {
+    const p = coerceToPhaseNumber(input.phase);
+    const f = coerceToPhaseNumber(input.fase);
+    if (p !== null && f !== null && p !== f) {
+      throw new HttpError(400, 'phase and fase must refer to the same phase; send only phase');
+    }
+  }
+  const phase = hasPhase ? input.phase : hasFase ? input.fase : input.phase;
+  return { phase, phaseName: input.phaseName };
 }
 
 function parseSortField(raw: unknown): ArtifactDefinitionSortField {
@@ -110,7 +130,7 @@ function phaseNameProvided(raw: unknown): boolean {
 }
 
 /**
- * POST: exige al menos `phase` o `phaseName`. PATCH: mismo criterio cuando cualquiera de los dos va en el body.
+ * POST: exige al menos `phase` o `phaseName` (o `fase` en lugar de `phase`). PATCH: mismo criterio cuando cualquiera va en el body.
  */
 function resolvePhaseFromBody(input: { phase?: unknown; phaseName?: unknown }): number {
   const hasNum =
@@ -281,14 +301,19 @@ export async function create(input: ArtifactDefinitionInput): Promise<ArtifactDe
     throw new HttpError(400, 'name is required');
   }
 
-  const phase = resolvePhaseFromBody({
-    phase: input.phase,
-    phaseName: input.phaseName,
-  });
+  const canonicalName = String(input.name).trim();
+  if (await repository.existsByExactName(canonicalName)) {
+    throw new HttpError(
+      409,
+      'An artifact definition with this name already exists',
+    );
+  }
+
+  const phase = resolvePhaseFromBody(mergeLegacyFaseForPhase(input));
   const predecessorNames = await resolvePredecessorRefs(input.predecessorNames);
 
   const payload: ArtifactDefinitionInsertPayload = {
-    name: String(input.name).trim(),
+    name: canonicalName,
     phase,
     initiativeType: initiativeTypeForCreate(input.initiativeType),
     predecessorNames,
@@ -310,22 +335,39 @@ export async function patch(
     throw new HttpError(400, 'Invalid body');
   }
 
-  const { phaseName, initiativeType: initiativeTypeRaw, ...rest } = updates;
+  const { phaseName, initiativeType: initiativeTypeRaw, fase, ...rest } = updates;
   const payload: ArtifactDefinitionUpdate = { ...rest };
 
   if (initiativeTypeRaw !== undefined) {
     payload.initiativeType = parseInitiativeTypeBody(initiativeTypeRaw);
   }
 
-  if (updates.phase !== undefined || phaseName !== undefined) {
-    payload.phase = resolvePhaseFromBody({
-      phase: updates.phase,
-      phaseName,
-    });
+  if (updates.phase !== undefined || phaseName !== undefined || fase !== undefined) {
+    payload.phase = resolvePhaseFromBody(
+      mergeLegacyFaseForPhase({
+        phase: updates.phase,
+        phaseName,
+        fase,
+      }),
+    );
   }
 
   if (updates.predecessorNames !== undefined) {
     payload.predecessorNames = await resolvePredecessorRefs(updates.predecessorNames);
+  }
+
+  if (updates.name !== undefined) {
+    const newName = String(updates.name).trim();
+    if (newName === '') {
+      throw new HttpError(400, 'name cannot be empty');
+    }
+    if (await repository.existsByExactName(newName, publicId)) {
+      throw new HttpError(
+        409,
+        'An artifact definition with this name already exists',
+      );
+    }
+    payload.name = newName;
   }
 
   const keys = Object.keys(payload).filter((k) => payload[k as keyof ArtifactDefinitionUpdate] !== undefined);
