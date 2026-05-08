@@ -7,7 +7,7 @@
 CREATE TABLE public.artifact_definition (
 	id bigserial NOT NULL,
 	public_id uuid DEFAULT gen_random_uuid() NOT NULL,
-	fase int2 NOT NULL,
+	phase int2 NOT NULL,
 	"name" varchar(500) NOT NULL,
 	initiative_type varchar(20) DEFAULT 'Both'::character varying NULL,
 	predecessor_names jsonb DEFAULT '[]'::jsonb NULL,
@@ -16,12 +16,12 @@ CREATE TABLE public.artifact_definition (
 	area varchar(50) DEFAULT 'Producto'::character varying NULL,
 	created_at timestamptz DEFAULT now() NULL,
 	updated_at timestamptz DEFAULT now() NULL,
-	CONSTRAINT artifact_definition_fase_check CHECK (((fase >= 1) AND (fase <= 8))),
+	CONSTRAINT artifact_definition_phase_check CHECK (((phase >= 1) AND (phase <= 8))),
 	CONSTRAINT artifact_definition_initiative_type_check CHECK (((initiative_type)::text = ANY (ARRAY[('Change'::character varying)::text, ('Run'::character varying)::text, ('Both'::character varying)::text]))),
 	CONSTRAINT artifact_definition_pkey PRIMARY KEY (id),
 	CONSTRAINT artifact_definition_public_id_key UNIQUE (public_id)
 );
-CREATE INDEX idx_artdef_fase ON public.artifact_definition USING btree (fase);
+CREATE INDEX idx_artdef_phase ON public.artifact_definition USING btree (phase);
 CREATE INDEX idx_artdef_type ON public.artifact_definition USING btree (initiative_type);
 
 -- Table Triggers

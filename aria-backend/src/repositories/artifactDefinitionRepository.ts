@@ -11,7 +11,7 @@ import type {
 import { buildSetClauses } from '../utils/sql';
 
 const FIELD_MAP: Record<string, string> = {
-  fase: 'fase',
+  phase: 'phase',
   name: 'name',
   initiativeType: 'initiative_type',
   description: 'description',
@@ -20,7 +20,7 @@ const FIELD_MAP: Record<string, string> = {
 };
 
 const COLUMNS = `
-  id, public_id, fase, name, initiative_type, predecessor_names,
+  id, public_id, phase, name, initiative_type, predecessor_names,
   description, mandatory, area, created_at, updated_at
 `;
 
@@ -38,8 +38,8 @@ function mapRow(row: ArtifactDefinitionRow): ArtifactDefinition {
   return {
     id: toNumberId(row.id),
     publicId: row.public_id,
-    fase: row.fase,
-    faseLabel: getPhaseLabel(row.fase),
+    phase: row.phase,
+    phaseLabel: getPhaseLabel(row.phase),
     name: row.name,
     initiativeType: row.initiative_type as ArtifactDefinition['initiativeType'],
     predecessorNames: row.predecessor_names ?? [],
@@ -55,7 +55,7 @@ export async function findAll(): Promise<ArtifactDefinition[]> {
   const result = await query<ArtifactDefinitionRow>(
     `SELECT ${COLUMNS}
        FROM artifact_definition
-      ORDER BY fase ASC, name ASC`,
+      ORDER BY phase ASC, name ASC`,
   );
   return result.rows.map(mapRow);
 }
@@ -93,7 +93,7 @@ function buildWhereClause(
 }
 
 const SORT_COLUMN: Record<ArtifactDefinitionSortField, string> = {
-  fase: 'fase',
+  phase: 'phase',
   name: 'name',
   updatedAt: 'updated_at',
   createdAt: 'created_at',
@@ -106,7 +106,7 @@ function orderBySql(
 ): string {
   const col = SORT_COLUMN[sortBy];
   const dir = sortOrder === 'desc' ? 'DESC' : 'ASC';
-  return `ORDER BY ${col} ${dir}, fase ASC, name ASC`;
+  return `ORDER BY ${col} ${dir}, phase ASC, name ASC`;
 }
 
 export async function countFiltered(filter: ArtifactDefinitionListFilters): Promise<number> {
@@ -182,13 +182,13 @@ export async function findNameByRef(ref: string): Promise<string | null> {
 export async function insert(input: ArtifactDefinitionInsertPayload): Promise<ArtifactDefinition> {
   const result = await query<ArtifactDefinitionRow>(
     `INSERT INTO artifact_definition
-       (public_id, fase, name, initiative_type, predecessor_names,
+       (public_id, phase, name, initiative_type, predecessor_names,
         description, mandatory, area)
      VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5::jsonb, $6, $7, $8)
      RETURNING ${COLUMNS}`,
     [
       input.publicId ?? null,
-      input.fase,
+      input.phase,
       input.name,
       input.initiativeType ?? 'Both',
       JSON.stringify(input.predecessorNames ?? []),

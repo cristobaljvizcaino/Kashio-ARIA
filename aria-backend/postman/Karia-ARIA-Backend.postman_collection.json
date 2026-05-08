@@ -130,7 +130,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `fase`, `faseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (Run|Change|Both), `area`, `sortBy` (`fase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`).\n\nDetalle de validación y formas: `docs/API_DATABASE_ENDPOINTS.md` §4."
+            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `phase`, `phaseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (Run|Change|Both), `area`, `sortBy` (`phase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`).\n\nDetalle de validación y formas: `docs/API_DATABASE_ENDPOINTS.md` §4."
           },
           "response": []
         },
@@ -140,7 +140,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Path: **`publicId`** (UUID estable de la fila). **`200`**: un **ArtifactDefinition** (`id`, `publicId`, `fase`, `faseLabel`, `name`, `initiativeType`, `predecessorNames`, …). **`400`**: UUID inválido. **`404`**: no existe."
+            "description": "Path: **`publicId`** (UUID estable de la fila). **`200`**: un **ArtifactDefinition** (`id`, `publicId`, `phase`, `phaseLabel`, `name`, `initiativeType`, `predecessorNames`, …). **`400`**: UUID inválido. **`404`**: no existe."
           },
           "response": []
         },
@@ -151,10 +151,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"fase\": 3,\n  \"faseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "**`name`** obligatorio. **Fase:** al menos uno de **`fase`** (1–8) o **`faseName`** (etiqueta KashioOS; mismas que `faseLabel` en GET — ver `src/const/phases.ts`). Si van ambos deben coincidir.\n\n**`initiativeType`:** opcional; default **`Both`**; si se envía solo **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente; se guarda como array de nombres. **`[]`** si no hay predecesores.\n\nOpcional: **`publicId`** (UUID) fijo; si se omite la BD genera uno.\n\n**`201`**: objeto creado. **`400`**: validación (fase, predecesores, initiativeType, etc.)."
+            "description": "**`name`** obligatorio. **Fase:** al menos uno de **`phase`** (1–8) o **`phaseName`** (etiqueta KashioOS; mismas que `phaseLabel` en GET — ver `src/const/phases.ts`). Si van ambos deben coincidir.\n\n**`initiativeType`:** opcional; default **`Both`**; si se envía solo **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente; se guarda como array de nombres. **`[]`** si no hay predecesores.\n\nOpcional: **`publicId`** (UUID) fijo; si se omite la BD genera uno.\n\n**`201`**: objeto creado. **`400`**: validación (phase, predecesores, initiativeType, etc.)."
           },
           "response": []
         },
@@ -165,10 +165,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"fase\": 3,\n  \"faseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Mismo **shape** que POST (puedes enviar cuerpo completo o parcial). Path: **`publicId`** UUID de la definición.\n\nSolo se actualizan claves presentes; si no envías `fase` ni `faseName`, la fase no cambia. Si no envías `predecessorNames`, esa columna no cambia.\n\n**`200`**: objeto actualizado. **`400`**: sin campos, validación. **`404`**: no existe."
+            "description": "Mismo **shape** que POST (puedes enviar cuerpo completo o parcial). Path: **`publicId`** UUID de la definición.\n\nSolo se actualizan claves presentes; si no envías `phase` ni `phaseName`, la fase no cambia. Si no envías `predecessorNames`, esa columna no cambia.\n\n**`200`**: objeto actualizado. **`400`**: sin campos, validación. **`404`**: no existe."
           },
           "response": []
         },

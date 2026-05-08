@@ -4,6 +4,8 @@ Documento de diseño y checklist para sustituir el modelo **Stage-Gate** (G0–G
 
 > **Nota de título:** si en reuniones apareció “migración de Git a fase”, el alcance funcional descrito corresponde a **Gate → Fase** (gobierno documental por fase del PDLC), no a Git.
 
+> **Actualización mayo 2026 — naming en inglés:** la columna `artifact_definition.fase` y los campos de API `fase` / `faseName` / `faseLabel` se renombraron a **`phase` / `phaseName` / `phaseLabel`** para alinear todo el backend en inglés. La regla operativa Gate→Fase de §2 sigue vigente; donde este documento dice `fase` léase **`phase`** en código, schema y API. Migración SQL: `database/migrations/002_rename_fase_to_phase.sql`.
+
 ---
 
 ## 1. Objetivo

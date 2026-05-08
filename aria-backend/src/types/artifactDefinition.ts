@@ -4,14 +4,14 @@ export type ArtifactInitiativeType = 'Run' | 'Change' | 'Both';
  * Modelo expuesto por la API. Se alinea con el esquema vigente:
  *   id            BIGSERIAL PK interno
  *   public_id     UUID estable (clave de URL/API)
- *   fase          1–8 (PDLC KashioOS)
+ *   phase         1–8 (PDLC KashioOS)
  *   predecessor_names jsonb array de strings (nombres legibles de predecesores)
  */
 export interface ArtifactDefinition {
   id: number;
   publicId: string;
-  fase: number;
-  faseLabel: string;
+  phase: number;
+  phaseLabel: string;
   name: string;
   initiativeType: ArtifactInitiativeType;
   predecessorNames: string[];
@@ -23,7 +23,7 @@ export interface ArtifactDefinition {
 }
 
 /**
- * Cuerpo POST. Indica **`fase`** (1–8) o **`faseName`** (etiqueta KashioOS, ej. `Design`);
+ * Cuerpo POST. Indica **`phase`** (1–8) o **`phaseName`** (etiqueta KashioOS, ej. `Design`);
  * hace falta al menos uno. Si ambos van y no coinciden → 400.
  * `predecessorNames`: cada elemento puede ser `publicId` (UUID) o `name` exacto de un
  * artefacto existente; se normaliza al `name` guardado en BD.
@@ -31,9 +31,9 @@ export interface ArtifactDefinition {
  * (mayúsculas indistintas). Si se omite → **`Both`**.
  */
 export interface ArtifactDefinitionInput {
-  fase?: number;
-  /** Etiqueta de fase (misma que `faseLabel` en respuesta), ej. `Backend Development`. */
-  faseName?: string;
+  phase?: number;
+  /** Etiqueta de fase (misma que `phaseLabel` en respuesta), ej. `Backend Development`. */
+  phaseName?: string;
   name: string;
   initiativeType?: ArtifactInitiativeType;
   predecessorNames?: string[];
@@ -43,29 +43,29 @@ export interface ArtifactDefinitionInput {
   publicId?: string;
 }
 
-/** Parámetros ya normalizados para INSERT (fase 1–8 resuelta; sin `faseName`). */
+/** Parámetros ya normalizados para INSERT (phase 1–8 resuelta; sin `phaseName`). */
 export type ArtifactDefinitionInsertPayload = Omit<
   ArtifactDefinitionInput,
-  'faseName' | 'fase'
+  'phaseName' | 'phase'
 > & {
-  fase: number;
+  phase: number;
 };
 
 export type ArtifactDefinitionUpdate = Partial<
   Omit<
     ArtifactDefinition,
-    'id' | 'publicId' | 'faseLabel' | 'createdAt' | 'updatedAt' | 'initiativeType'
+    'id' | 'publicId' | 'phaseLabel' | 'createdAt' | 'updatedAt' | 'initiativeType'
   >
 > & {
   initiativeType?: ArtifactInitiativeType;
-  faseName?: string;
+  phaseName?: string;
 };
 
 /** Forma cruda devuelta por `pg` (snake_case y `id` puede llegar como string desde bigint). */
 export interface ArtifactDefinitionRow {
   id: number | string;
   public_id: string;
-  fase: number;
+  phase: number;
   name: string;
   initiative_type: string;
   predecessor_names: string[] | null;
@@ -77,8 +77,8 @@ export interface ArtifactDefinitionRow {
 }
 
 export interface ArtifactDefinitionsByPhaseGroup {
-  fase: number;
-  faseLabel: string;
+  phase: number;
+  phaseLabel: string;
   count: number;
   artifacts: ArtifactDefinition[];
 }
@@ -113,7 +113,7 @@ export interface ArtifactDefinitionListFilters {
   name?: string;
 }
 
-export type ArtifactDefinitionSortField = 'fase' | 'name' | 'updatedAt' | 'createdAt' | 'id';
+export type ArtifactDefinitionSortField = 'phase' | 'name' | 'updatedAt' | 'createdAt' | 'id';
 
 export interface ArtifactDefinitionListQuery extends ArtifactDefinitionListFilters {
   sortBy?: ArtifactDefinitionSortField;

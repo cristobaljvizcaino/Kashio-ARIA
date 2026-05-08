@@ -172,9 +172,11 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 
 ## 4. Definiciones de artefactos — tabla `artifact_definition`
 
-Modelo vigente en BD (tras migración gate → fase): PK numérica **`id`** (`bigserial`), **`public_id`** (UUID, estable para API), **`fase`** (1–8 PDLC KashioOS), **`predecessor_names`** (`jsonb`, array de strings con nombres legibles de predecesores). Ya no se usa columna `gate` ni `predecessor_ids` con UUIDs en este contrato.
+Modelo vigente en BD (tras migración gate → phase): PK numérica **`id`** (`bigserial`), **`public_id`** (UUID, estable para API), **`phase`** (1–8 PDLC KashioOS), **`predecessor_names`** (`jsonb`, array de strings con nombres legibles de predecesores). Ya no se usa columna `gate` ni `predecessor_ids` con UUIDs en este contrato.
 
-Etiquetas de fase (`faseLabel`) en respuestas: 1 Research, 2 Analysis, 3 Design, 4 Frontend Development, 5 Backend Development, 6 Testing, 7 Deployment, 8 Monitoring (ver `src/const/phases.ts`).
+> **Nota de naming (mayo 2026):** la columna y los campos de API se llamaban `fase`/`faseName`/`faseLabel` cuando se introdujo la migración Gate→Fase. Posteriormente se renombraron a `phase`/`phaseName`/`phaseLabel` para alinear con el resto del backend en inglés (script `database/migrations/002_rename_fase_to_phase.sql`). Donde este doc dice `phase`, la BD legacy puede aún tener `fase` hasta correr esa migración.
+
+Etiquetas de fase (`phaseLabel`) en respuestas: 1 Research, 2 Analysis, 3 Design, 4 Frontend Development, 5 Backend Development, 6 Testing, 7 Deployment, 8 Monitoring (ver `src/const/phases.ts`).
 
 ---
 
@@ -195,7 +197,7 @@ Etiquetas de fase (`faseLabel`) en respuestas: 1 Research, 2 Analysis, 3 Design,
 | `publicId` | UUID — filtro exacto por `public_id`. |
 | `initiativeType` | `Run` \| `Change` \| `Both` (el servidor acepta mayúsculas/minúsculas). |
 | `area` | Coincidencia **exacta** con la columna `area`. |
-| `sortBy` | `fase` (default), `name`, `updatedAt`, `createdAt`, `id`. También se acepta `updated_at` / `created_at`. |
+| `sortBy` | `phase` (default), `name`, `updatedAt`, `createdAt`, `id`. También se acepta `updated_at` / `created_at`. |
 | `sortOrder` | `asc` (default) o `desc`. |
 
 **Forma de la respuesta (`200`):**
@@ -204,15 +206,15 @@ Etiquetas de fase (`faseLabel`) en respuestas: 1 Research, 2 Analysis, 3 Design,
 |-------|------|--------|
 | `totalArtifacts` | number | Cantidad de filas que cumplen el filtro (suma de todos los `count` por fase). |
 | `totalPhases` | number | Siempre **8** — ranuras fijas del PDLC (`phases.length`). |
-| `phases` | array | **Siempre 8 elementos**, ordenados por `fase` 1…8. |
+| `phases` | array | **Siempre 8 elementos**, ordenados por `phase` 1…8. |
 | `filters` | object | Eco de filtros de negocio aplicados + `sortBy` y `sortOrder`. |
 
 **Cada elemento de `phases`:**
 
 | Campo | Tipo | Notas |
 |-------|------|--------|
-| `fase` | number | 1–8 |
-| `faseLabel` | string | Etiqueta KashioOS (ej. `Design`). |
+| `phase` | number | 1–8 |
+| `phaseLabel` | string | Etiqueta KashioOS (ej. `Design`). |
 | `count` | number | Artefactos de esa fase que cumplen el filtro (0 si la fase queda vacía para ese resultado). |
 | `artifacts` | **ArtifactDefinition[]** | Lista de artefactos de esa fase; `[]` si `count === 0`. |
 
@@ -224,8 +226,8 @@ Las fases sin artefactos en el catálogo (p. ej. 4 y 6 si aún no hay filas) apa
 |-------|------|
 | `id` | number (PK interna) |
 | `publicId` | string (UUID) |
-| `fase` | number (1–8) |
-| `faseLabel` | string |
+| `phase` | number (1–8) |
+| `phaseLabel` | string |
 | `name` | string |
 | `initiativeType` | `"Run"` \| `"Change"` \| `"Both"` |
 | `predecessorNames` | string[] |
@@ -257,10 +259,10 @@ Las fases sin artefactos en el catálogo (p. ej. 4 y 6 si aún no hay filas) apa
 | **Operación SQL** | `INSERT … RETURNING *` |
 | **Content-Type** | `application/json` |
 
-**Validación:** **`name`** obligatorio. **Fase:** debe indicarse **`fase`** (entero 1–8 o string numérico `"3"`) **o** **`faseName`**. `faseName` **no es libre**: debe coincidir (sin distinguir mayúsculas) con una de las **8 etiquetas KashioOS** definidas en código (`src/const/phases.ts`), las mismas que devuelve **`faseLabel`** en GET:
+**Validación:** **`name`** obligatorio. **Fase:** debe indicarse **`phase`** (entero 1–8 o string numérico `"3"`) **o** **`phaseName`**. `phaseName` **no es libre**: debe coincidir (sin distinguir mayúsculas) con una de las **8 etiquetas KashioOS** definidas en código (`src/const/phases.ts`), las mismas que devuelve **`phaseLabel`** en GET:
 
-| `fase` | `faseName` (valor permitido) |
-|--------|------------------------------|
+| `phase` | `phaseName` (valor permitido) |
+|---------|-------------------------------|
 | 1 | `Research` |
 | 2 | `Analysis` |
 | 3 | `Design` |
@@ -270,15 +272,15 @@ Las fases sin artefactos en el catálogo (p. ej. 4 y 6 si aún no hay filas) apa
 | 7 | `Deployment` |
 | 8 | `Monitoring` |
 
-Hace falta al menos **`fase` o `faseName`** en el body; si envías **ambos**, deben referirse a la **misma** fase (ej. `fase: 3` y `faseName: "Design"`). Cualquier número fuera de 1–8 o etiqueta que no esté en la tabla → `400`. **`predecessorNames`:** cada elemento es un **`publicId`** (UUID) o el **`name`** exacto de una fila existente en `artifact_definition`; si falta alguno → `400`. Se guarda en jsonb como array de **`name`** canónicos. **`initiativeType`:** opcional; si se envía debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas); si se omite → **`Both`**.
+Hace falta al menos **`phase` o `phaseName`** en el body; si envías **ambos**, deben referirse a la **misma** fase (ej. `phase: 3` y `phaseName: "Design"`). Cualquier número fuera de 1–8 o etiqueta que no esté en la tabla → `400`. **`predecessorNames`:** cada elemento es un **`publicId`** (UUID) o el **`name`** exacto de una fila existente en `artifact_definition`; si falta alguno → `400`. Se guarda en jsonb como array de **`name`** canónicos. **`initiativeType`:** opcional; si se envía debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas); si se omite → **`Both`**.
 
 **Cuerpo (ArtifactDefinitionInput):**
 
 | Campo | Obligatorio | Tipo | Default / notas |
 |-------|-------------|------|-----------------|
 | `name` | Sí | string | |
-| `fase` | Condicional | number o string | 1–8; opcional si va `faseName`. |
-| `faseName` | Condicional | string | Una de las 8 etiquetas de la tabla anterior; opcional si va `fase`. |
+| `phase` | Condicional | number o string | 1–8; opcional si va `phaseName`. |
+| `phaseName` | Condicional | string | Una de las 8 etiquetas de la tabla anterior; opcional si va `phase`. |
 | `publicId` | No | string (UUID) | Si se omite, la BD genera `gen_random_uuid()`. |
 | `initiativeType` | No | `"Run"` \| `"Change"` \| `"Both"` | **`Both`** si se omite; comparación sin distinguir mayúsculas. |
 | `predecessorNames` | No | string[] | **`[]`** — UUID o `name` existente por elemento. |
@@ -298,10 +300,10 @@ Hace falta al menos **`fase` o `faseName`** en el body; si envías **ambos**, de
 | **Path** | **`publicId`** — UUID |
 | **Content-Type** | `application/json` |
 
-**Cuerpo:** **las mismas propiedades que en POST** (`name`, `fase`, `faseName`, `initiativeType`, `description`, `mandatory`, `area`, `predecessorNames`). Puedes enviar el **JSON completo** (mismo shape que un alta) para sobrescribir todos los campos que incluyas, o un **subconjunto** parcial: solo se actualizan las claves presentes (excepto fase: ver siguiente viñeta).
+**Cuerpo:** **las mismas propiedades que en POST** (`name`, `phase`, `phaseName`, `initiativeType`, `description`, `mandatory`, `area`, `predecessorNames`). Puedes enviar el **JSON completo** (mismo shape que un alta) para sobrescribir todos los campos que incluyas, o un **subconjunto** parcial: solo se actualizan las claves presentes (excepto fase: ver siguiente viñeta).
 
 - **`publicId`** no se envía en el body del PUT (va solo en la URL).
-- Si **no** envías `fase` ni `faseName`, la columna **`fase`** no cambia. Si envías cualquiera de los dos (o ambos), aplican la **misma** tabla de etiquetas y reglas de conflicto que en POST.
+- Si **no** envías `phase` ni `phaseName`, la columna **`phase`** no cambia. Si envías cualquiera de los dos (o ambos), aplican la **misma** tabla de etiquetas y reglas de conflicto que en POST.
 - Si envías `initiativeType`, debe ser **`Run`**, **`Change`** o **`Both`** (mayúsculas indistintas). Si omites la clave, **`initiativeType`** no cambia.
 - **`predecessorNames`:** misma validación que POST (UUID o `name` existente por elemento).
 
@@ -310,8 +312,8 @@ Hace falta al menos **`fase` o `faseName`** en el body; si envías **ambos**, de
 ```json
 {
   "name": "2.9. Ejemplo SDD",
-  "fase": 3,
-  "faseName": "Design",
+  "phase": 3,
+  "phaseName": "Design",
   "initiativeType": "Run",
   "description": "Descripción de prueba",
   "mandatory": false,
@@ -362,7 +364,7 @@ Hace falta al menos **`fase` o `faseName`** en el body; si envías **ambos**, de
 |-------|---------------------------|
 | **`initiative`** | Columnas usadas por el repo coinciden con el DDL (`id`, `name`, `product`, `current_gate_id` default `G0`, `type` nullable + CHECK, fechas como `varchar`, `artifacts` jsonb default `[]`, `pipeline_activated` default false). Los triggers llaman a `update_updated_at_column()` (la función debe existir en la BD; ver `database/README.md`). |
 | **`intake_request`** | El GET refleja las columnas del `SELECT *`; `requester` y `problem` son **NOT NULL** en DDL; el JSON del API sigue los tipos en `src/types/intake.ts`. |
-| **`artifact_definition`** | Modelo vigente: `id` bigserial, `public_id` uuid, `fase` 1–8, `predecessor_names` jsonb, `initiative_type` CHECK `Change`/`Run`/`Both`. Ver `database/schemaV2.sql` y migraciones en `database/migrations/`. |
+| **`artifact_definition`** | Modelo vigente: `id` bigserial, `public_id` uuid, `phase` 1–8 (renombrada desde la legacy `fase` por `database/migrations/002_rename_fase_to_phase.sql`), `predecessor_names` jsonb, `initiative_type` CHECK `Change`/`Run`/`Both`. Ver `database/schemaV2.sql` y migraciones en `database/migrations/`. |
 | **`library_file`** | Existe en `schemaV2.sql` pero **no** hay rutas Express documentadas aquí que lean/escriban esa tabla (solo GCS en otras rutas). |
 
 Fuente de verdad del esquema físico: **`database/schemaV2.sql`**. Fuente de verdad del contrato HTTP: **`src/`** + este documento; si divergen, primero revisar migraciones o ramas distintas.

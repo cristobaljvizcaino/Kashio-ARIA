@@ -18,8 +18,8 @@ export const PHASE_LABELS: Readonly<Record<number, string>> = {
   8: 'Monitoring',
 };
 
-export function getPhaseLabel(fase: number): string {
-  return PHASE_LABELS[fase] ?? `Phase ${fase}`;
+export function getPhaseLabel(phase: number): string {
+  return PHASE_LABELS[phase] ?? `Phase ${phase}`;
 }
 
 export function isValidPhase(value: unknown): value is number {
@@ -32,7 +32,7 @@ export function isValidPhase(value: unknown): value is number {
 }
 
 /**
- * Interpreta `fase` numérica desde body JSON: número entero 1–8 o string `"3"`.
+ * Interpreta `phase` numérica desde body JSON: número entero 1–8 o string `"3"`.
  * Devuelve `null` si no es válido.
  */
 export function coerceToPhaseNumber(value: unknown): number | null {
@@ -58,6 +58,6 @@ export function phaseNumberFromLabel(label: string): number | null {
 }
 
 /** Carpeta GCS canónica para el bucket `karia-library-files` (`Output/Phase-{n}/`). */
-export function getPhaseStorageFolder(fase: number): string {
-  return `Phase-${fase}`;
+export function getPhaseStorageFolder(phase: number): string {
+  return `Phase-${phase}`;
 }

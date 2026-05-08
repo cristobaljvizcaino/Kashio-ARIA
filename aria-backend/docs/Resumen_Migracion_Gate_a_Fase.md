@@ -2,6 +2,8 @@
 
 Bitácora compacta de **lo que efectivamente se cambió** en este ciclo para mover ARIA del modelo *Stage-Gate* (G0–G5) al modelo de **8 fases del PDLC** alineado con KashioOS. Complementa al plan maestro `Migracion_Gate_a_Fase.md` (diseño / opciones) con los hechos concretos: SQL aplicado, archivos modificados, errores resueltos y pendientes.
 
+> **Actualización posterior (rename a inglés):** después de esta bitácora la columna `artifact_definition.fase` y los campos de API `fase` / `faseName` / `faseLabel` se renombraron a **`phase` / `phaseName` / `phaseLabel`** vía `database/migrations/002_rename_fase_to_phase.sql`. Las decisiones funcionales documentadas a continuación no cambian; solo el identificador de columna/campo.
+
 ---
 
 ## 1. Estado final del modelo `artifact_definition`

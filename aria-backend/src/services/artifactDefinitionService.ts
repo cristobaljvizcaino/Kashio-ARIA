@@ -31,7 +31,7 @@ function ensureUuid(publicId: string): void {
 }
 
 const SORT_FIELDS: ArtifactDefinitionSortField[] = [
-  'fase',
+  'phase',
   'name',
   'updatedAt',
   'createdAt',
@@ -78,9 +78,9 @@ function initiativeTypeForCreate(raw: unknown): ArtifactInitiativeType {
 
 function parseSortField(raw: unknown): ArtifactDefinitionSortField {
   const s = firstQueryString(raw)?.toLowerCase();
-  if (!s) return 'fase';
+  if (!s) return 'phase';
   const map: Record<string, ArtifactDefinitionSortField> = {
-    fase: 'fase',
+    phase: 'phase',
     name: 'name',
     updatedat: 'updatedAt',
     updated_at: 'updatedAt',
@@ -105,22 +105,22 @@ function parseSortOrder(raw: unknown): 'asc' | 'desc' {
   throw new HttpError(400, 'sortOrder must be asc or desc');
 }
 
-function faseNameProvided(raw: unknown): boolean {
+function phaseNameProvided(raw: unknown): boolean {
   return raw !== undefined && raw !== null && String(raw).trim() !== '';
 }
 
 /**
- * POST: exige al menos `fase` o `faseName`. PATCH: mismo criterio cuando cualquiera de los dos va en el body.
+ * POST: exige al menos `phase` o `phaseName`. PATCH: mismo criterio cuando cualquiera de los dos va en el body.
  */
-function resolveFaseFromBody(input: { fase?: unknown; faseName?: unknown }): number {
+function resolvePhaseFromBody(input: { phase?: unknown; phaseName?: unknown }): number {
   const hasNum =
-    input.fase !== undefined && input.fase !== null && String(input.fase).trim() !== '';
-  const hasLabel = faseNameProvided(input.faseName);
+    input.phase !== undefined && input.phase !== null && String(input.phase).trim() !== '';
+  const hasLabel = phaseNameProvided(input.phaseName);
 
   if (!hasNum && !hasLabel) {
     throw new HttpError(
       400,
-      `Either fase (integer ${MIN_PHASE}–${MAX_PHASE}) or faseName (KashioOS phase label) is required`,
+      `Either phase (integer ${MIN_PHASE}–${MAX_PHASE}) or phaseName (KashioOS phase label) is required`,
     );
   }
 
@@ -128,31 +128,31 @@ function resolveFaseFromBody(input: { fase?: unknown; faseName?: unknown }): num
   let fromLabel: number | null | undefined;
 
   if (hasNum) {
-    fromNum = coerceToPhaseNumber(input.fase);
+    fromNum = coerceToPhaseNumber(input.phase);
     if (fromNum === null) {
       throw new HttpError(
         400,
-        `fase must be an integer between ${MIN_PHASE} and ${MAX_PHASE} (or use faseName)`,
+        `phase must be an integer between ${MIN_PHASE} and ${MAX_PHASE} (or use phaseName)`,
       );
     }
   }
   if (hasLabel) {
-    fromLabel = phaseNumberFromLabel(String(input.faseName));
+    fromLabel = phaseNumberFromLabel(String(input.phaseName));
     if (fromLabel === null) {
       throw new HttpError(
         400,
-        `Unknown faseName. Use a KashioOS label for phases ${MIN_PHASE}–${MAX_PHASE} (e.g. "${getPhaseLabel(1)}").`,
+        `Unknown phaseName. Use a KashioOS label for phases ${MIN_PHASE}–${MAX_PHASE} (e.g. "${getPhaseLabel(1)}").`,
       );
     }
   }
   const resolvedNum = fromNum ?? undefined;
   const resolvedLabel = fromLabel ?? undefined;
   if (resolvedNum !== undefined && resolvedLabel !== undefined && resolvedNum !== resolvedLabel) {
-    throw new HttpError(400, 'fase and faseName do not refer to the same phase');
+    throw new HttpError(400, 'phase and phaseName do not refer to the same phase');
   }
   const out = resolvedNum ?? resolvedLabel;
   if (out === undefined) {
-    throw new HttpError(400, 'Could not resolve phase from fase / faseName');
+    throw new HttpError(400, 'Could not resolve phase from phase / phaseName');
   }
   return out;
 }
@@ -225,24 +225,24 @@ export async function listFromQuery(
     repository.findFiltered(filter, sortBy, sortOrder),
   ]);
 
-  const countByFase = new Map<number, number>();
+  const countByPhase = new Map<number, number>();
   for (const a of items) {
-    countByFase.set(a.fase, (countByFase.get(a.fase) ?? 0) + 1);
+    countByPhase.set(a.phase, (countByPhase.get(a.phase) ?? 0) + 1);
   }
-  const byFase = new Map<number, ArtifactDefinition[]>();
+  const byPhase = new Map<number, ArtifactDefinition[]>();
   for (const artifact of items) {
-    const list = byFase.get(artifact.fase) ?? [];
+    const list = byPhase.get(artifact.phase) ?? [];
     list.push(artifact);
-    byFase.set(artifact.fase, list);
+    byPhase.set(artifact.phase, list);
   }
 
   const phases: ArtifactDefinitionsByPhaseGroup[] = [];
-  for (let faseNum = MIN_PHASE; faseNum <= MAX_PHASE; faseNum++) {
-    const artifacts = byFase.get(faseNum) ?? [];
+  for (let phaseNum = MIN_PHASE; phaseNum <= MAX_PHASE; phaseNum++) {
+    const artifacts = byPhase.get(phaseNum) ?? [];
     phases.push({
-      fase: faseNum,
-      faseLabel: getPhaseLabel(faseNum),
-      count: countByFase.get(faseNum) ?? 0,
+      phase: phaseNum,
+      phaseLabel: getPhaseLabel(phaseNum),
+      count: countByPhase.get(phaseNum) ?? 0,
       artifacts,
     });
   }
@@ -281,15 +281,15 @@ export async function create(input: ArtifactDefinitionInput): Promise<ArtifactDe
     throw new HttpError(400, 'name is required');
   }
 
-  const fase = resolveFaseFromBody({
-    fase: input.fase,
-    faseName: input.faseName,
+  const phase = resolvePhaseFromBody({
+    phase: input.phase,
+    phaseName: input.phaseName,
   });
   const predecessorNames = await resolvePredecessorRefs(input.predecessorNames);
 
   const payload: ArtifactDefinitionInsertPayload = {
     name: String(input.name).trim(),
-    fase,
+    phase,
     initiativeType: initiativeTypeForCreate(input.initiativeType),
     predecessorNames,
     description: input.description ?? null,
@@ -310,17 +310,17 @@ export async function patch(
     throw new HttpError(400, 'Invalid body');
   }
 
-  const { faseName, initiativeType: initiativeTypeRaw, ...rest } = updates;
+  const { phaseName, initiativeType: initiativeTypeRaw, ...rest } = updates;
   const payload: ArtifactDefinitionUpdate = { ...rest };
 
   if (initiativeTypeRaw !== undefined) {
     payload.initiativeType = parseInitiativeTypeBody(initiativeTypeRaw);
   }
 
-  if (updates.fase !== undefined || faseName !== undefined) {
-    payload.fase = resolveFaseFromBody({
-      fase: updates.fase,
-      faseName,
+  if (updates.phase !== undefined || phaseName !== undefined) {
+    payload.phase = resolvePhaseFromBody({
+      phase: updates.phase,
+      phaseName,
     });
   }
 
