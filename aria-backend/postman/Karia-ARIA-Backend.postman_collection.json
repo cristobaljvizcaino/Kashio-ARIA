@@ -2,13 +2,13 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Karia ARIA Backend",
-    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API. Tras **Create artifact definition**, copia `publicId` de la respuesta a la variable **`artifactDefPublicId`** para GET/PUT/DELETE.",
+    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API. Tras **Sync initiative from KashioOS**, copia `publicId` a **`initiativePublicId`**. Tras **Create artifact definition**, copia `publicId` a **`artifactDefPublicId`** para GET/PUT/DELETE.\n\n**Iniciativas:** requieren `KASHIOS_API_BASE_URL` y `KASHIOS_API_TOKEN` en `.env` para **POST …/initiatives/sync/:publicId**.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
     { "key": "apiPrefix", "value": "karia-svc/v2" },
-    { "key": "initiativeId", "value": "init-uuid-ejemplo" },
+    { "key": "initiativePublicId", "value": "ed5c9978-c12b-4ba0-b127-3faf89d0e9a8", "description": "UUID de iniciativa en KashioOS (= public_id en ARIA). Cambiar por el de tu entorno." },
     { "key": "artifactDefPublicId", "value": "a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11" },
     { "key": "libraryFileId", "value": "lib-1234567890-nombre-archivo.txt" }
   ],
@@ -54,7 +54,7 @@
       ]
     },
     {
-      "name": "3. Initiatives",
+      "name": "3. Initiatives (KashioOS sync)",
       "item": [
         {
           "name": "List initiatives",
@@ -62,45 +62,51 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/initiatives",
-            "description": "`SELECT * FROM initiative ORDER BY created_at DESC`. Respuesta: **array** de objetos (camelCase). No incluye `createdAt`/`updatedAt` en el JSON de salida."
+            "description": "**`200`**: array de **InitiativeSummary** (iniciativas ya sincronizadas en ARIA). Orden: `synced_at DESC`. Campos típicos: `publicId`, `code`, `title`, `status`, `currentPhase`, `currentPhaseLabel`, `initiativeType` (`CHANGE`|`NEW_PRODUCT`), `productName`, `quarterName`, `quarterYear`, fechas estimadas, `syncedAt`. **No** incluye el array `phases` ni `description` (listado liviano).\n\nLas iniciativas **no** se crean con POST en ARIA: solo entran vía **Sync from KashioOS**."
           },
           "response": []
         },
         {
-          "name": "Create initiative",
+          "name": "Sync initiative from KashioOS",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
-            "body": {
-              "mode": "raw",
-              "raw": "{\n  \"id\": \"{{initiativeId}}\",\n  \"name\": \"Mi iniciativa\",\n  \"type\": \"Run\",\n  \"product\": null,\n  \"startDate\": null,\n  \"endDate\": null,\n  \"quarter\": null,\n  \"status\": null,\n  \"intakeRequestId\": null,\n  \"currentGateId\": \"G0\",\n  \"pipelineActivated\": false,\n  \"artifacts\": []\n}"
-            },
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives",
-            "description": "Servicio valida **id** y **name** (400 si faltan). En `schemaV2.sql`, **`type` es nullable**; si se omite queda NULL. Valores distintos de **Run** / **Change** violan el CHECK y suelen devolver 500.\nRecomendación: enviar siempre `type` Run|Change. Opcionales: `product`, `currentGateId` (default G0 en código), fechas, `quarter`, `status`, `intakeRequestId`, `pipelineActivated` (default false), `artifacts` (array, default []).\n200: objeto Initiative creado."
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync/{{initiativePublicId}}",
+            "description": "Trae la iniciativa desde KashioOS (`GET …/api/v1/initiatives/:id` con `KASHIOS_API_TOKEN`) y hace **UPSERT** en `initiative` por `public_id`.\n\n**`201`**: primera vez en ARIA. **`200`**: ya existía, se actualizó.\n\n**`400`**: UUID inválido. **`404`**: KashioOS no encontró la iniciativa. **`500`**: faltan `KASHIOS_API_BASE_URL` / `KASHIOS_API_TOKEN`. **`502`/`504`**: error o timeout upstream.\n\nSin body. Requiere variables de entorno en el servidor (ver `docs/Integracion_Iniciativas_KashioOS.md`)."
           },
           "response": []
         },
         {
-          "name": "Update initiative",
+          "name": "Get initiative detail (8 phases + artifacts)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativePublicId}}",
+            "description": "**`200`**: **InitiativeDetail** — datos de la iniciativa + `totalArtifacts` + `phases` (siempre **8** entradas). Cada fase incluye `phaseNumber`, `phaseLabel`, estado del snapshot KashioOS (`status`, `enteredAt`, `completedAt`), `artifactsCount` y `artifacts[]` (filas de **`artifact_definition`** con esa `phase`).\n\n**`400`**: UUID inválido. **`404`**: no hay copia local (hacer **Sync** primero)."
+          },
+          "response": []
+        },
+        {
+          "name": "Update initiative status (PUT — deshabilitado en router)",
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"Nombre actualizado\",\n  \"status\": \"active\"\n}"
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
             },
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}",
-            "description": "PATCH semántico: solo se actualizan claves presentes. Válidas: `name`, `product`, `currentGateId`, `type`, `startDate`, `endDate`, `quarter`, `status`, `intakeRequestId`, `pipelineActivated`, `artifacts`. El `id` del body no cambia la fila (usa el de la URL).\n404 si no existe; 400 si el objeto está vacío."
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativePublicId}}",
+            "description": "**Estado en código:** la ruta `PUT /:publicId` está **comentada** en `src/routes/initiativeRoutes.ts` hasta que se decida exponerla. El handler y el servicio **sí existen**: descomenta la línea del router y esta petición funcionará.\n\nBody hoy solo **`status`** (string, se normaliza a mayúsculas). Útil para restaurar tras soft-delete (`status` distinto de `DELETED`) o override local. **`404`**: no existe. **`400`**: body vacío o `status` vacío."
           },
           "response": []
         },
         {
-          "name": "Delete initiative",
+          "name": "Delete initiative (soft — status DELETED)",
           "request": {
             "method": "DELETE",
             "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativeId}}",
-            "description": "Sin body. Respuesta 200 siempre `{ \"success\": true }` (incluso si el id no existía — DELETE idempotente en el código actual)."
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativePublicId}}",
+            "description": "**Soft-delete:** no borra la fila; pone **`status = \"DELETED\"`**.\n\n**`200`**: `{ \"success\": true, \"softDeleted\": true, \"initiative\": { … } }`.\n\n**`404`**: no existe iniciativa con ese `publicId`. Para volver a datos de KashioOS: **Sync initiative**; para override manual: habilitar **PUT** y enviar otro `status`."
           },
           "response": []
         }
@@ -130,7 +136,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `phase`, `phaseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (CHANGE|NEW_PRODUCT), `area`, `sortBy` (`phase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`).\n\nDetalle de validación y formas: `docs/API_DATABASE_ENDPOINTS.md` §4."
+            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `phase`, `phaseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (**Run** | **Change** | **Both**, case-insensitive), `area`, `sortBy` (`phase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`). **Nota:** el query `phase` no filtra por fase; el front usa `phases[]` de la respuesta.\n\nDetalle: `docs/API_DATABASE_ENDPOINTS.md` §4."
           },
           "response": []
         },
@@ -151,10 +157,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"CHANGE\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "**`name`** obligatorio (único: **`409`** si ya existe otra fila con el mismo `name` exacto).\n\n**Fase:** al menos uno de **`phase`** (1–8, entero o string numérico) o **`phaseName`**. Opcional legacy: **`fase`** como alias de **`phase`** (no puede contradecir `phase`).\n\n**`initiativeType`:** **obligatorio** en POST — **`CHANGE`** o **`NEW_PRODUCT`** (`change` / `new_product` sin distinguir mayúsculas).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente.\n\n**`201`** creado; **`409`** nombre duplicado."
+            "description": "**`name`** obligatorio (único: **`409`** si ya existe otra fila con el mismo `name` exacto).\n\n**Fase:** al menos uno de **`phase`** (1–8, entero o string numérico) o **`phaseName`**. Opcional legacy: **`fase`** como alias de **`phase`** (no puede contradecir `phase`).\n\n**`initiativeType`:** en POST, si se omite → **`Both`**; si se envía → **Run** | **Change** | **Both** (cualquier capitalización).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente.\n\n**`201`** creado; **`409`** nombre duplicado."
           },
           "response": []
         },
@@ -165,10 +171,10 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"NEW_PRODUCT\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Both\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Parcial o completo. **`initiativeType`** solo **`CHANGE`** o **`NEW_PRODUCT`**. Si cambias **`name`**, **`409`** si ya existe otro registro con ese nombre.\n\n**`200`** OK; **`404`** no existe."
+            "description": "Parcial o completo. **`initiativeType`** debe ser **Run** | **Change** | **Both** si se envía. Si cambias **`name`**, **`409`** si ya existe otro registro con ese nombre.\n\n**`200`** OK; **`404`** no existe."
           },
           "response": []
         },

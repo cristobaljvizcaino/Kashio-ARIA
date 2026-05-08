@@ -8,7 +8,7 @@ Convenciones:
 - **Errores previstos:** `{ "error": "mensaje" }`; opcionalmente `{ "error": "...", "details": ... }` para `HttpError` con detalles.
 - **Códigos:** `400` validación de negocio (`HttpError`), `404` recurso no encontrado en PUT, `500` fallo de base de datos u otros errores no controlados.
 
-Colección Postman: **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas *2. Health*, *3. Initiatives*, *4. Intakes*, *5. Artifact definitions*).
+Colección Postman: **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas *2. Health*, *3. Initiatives (KashioOS sync)*, *4. Intakes*, *5. Artifact definitions*).
 
 ---
 
@@ -43,100 +43,68 @@ Si **`ConnectionString_Karia`** no está definida, el pool no se crea y la respu
 
 ---
 
-## 2. Iniciativas — tabla `initiative`
+## 2. Iniciativas — tabla `initiative` (KashioOS → ARIA)
+
+Las iniciativas **no** se crean con `POST /initiatives` en ARIA. Solo existen filas locales tras **`POST /initiatives/sync/:publicId`**, que consume KashioOS y hace **UPSERT** por **`public_id`** (UUID = `id` upstream). Contrato completo, variables de entorno y DDL: **`docs/Integracion_Iniciativas_KashioOS.md`**.
 
 ### `GET /karia-svc/v2/initiatives`
 
 | | |
 |--|--|
-| **Operación SQL** | `SELECT * FROM initiative ORDER BY created_at DESC` |
+| **Operación SQL** | `SELECT` columnas del snapshot (sin `phases` jsonb en el SELECT del listado); orden `synced_at DESC` |
 | **Query / body** | Ninguno |
-| **Respuesta `200`** | Array JSON de objetos **Initiative** (ver abajo). Lista vacía `[]` si no hay filas. |
+| **Respuesta `200`** | Array de **InitiativeSummary** (listado liviano). |
 
-**Objeto en cada elemento (respuesta):**
-
-| Campo | Tipo | Notas |
-|-------|------|--------|
-| `id` | string | |
-| `name` | string | |
-| `product` | string \| null | |
-| `currentGateId` | string | Default en alta en código: `G0`; en DDL la columna admite NULL. |
-| `type` | `"Run"` \| `"Change"` \| null | Nullable en DDL; el tipo TS del servidor pide union sin null, pero Postgres puede devolver NULL si se insertó sin `type`. |
-| `startDate` | string \| null | |
-| `endDate` | string \| null | |
-| `quarter` | string \| null | |
-| `status` | string \| null | |
-| `intakeRequestId` | string \| null | |
-| `pipelineActivated` | boolean | |
-| `artifacts` | array | JSON almacenado en BD; por defecto `[]` |
-
-*No se devuelven `created_at` / `updated_at` en el JSON (no están en el mapeo de salida).*
+Campos típicos en cada elemento: `publicId`, `code`, `title`, `status`, `currentPhase`, `currentPhaseLabel`, `initiativeType` (`CHANGE` \| `NEW_PRODUCT`), `productName`, `quarterName`, `quarterYear`, `estimatedStartDate`, `estimatedEndDate`, `syncedAt`.
 
 ---
 
-### `POST /karia-svc/v2/initiatives`
+### `POST /karia-svc/v2/initiatives/sync/:publicId`
 
 | | |
 |--|--|
-| **Operación SQL** | `INSERT … RETURNING *` |
-| **Content-Type** | `application/json` |
-
-**Validación en servicio:** obligatorios **`id`** y **`name`**. Si faltan → `400` `{ "error": "id and name are required" }`.
-
-**Cuerpo (InitiativeInput):**
-
-| Campo | Obligatorio | Tipo | Default / notas |
-|-------|-------------|------|-----------------|
-| `id` | Sí | string | Cliente debe generar el id (ej. UUID). |
-| `name` | Sí | string | |
-| `type` | No (DDL) / **sí a nivel producto** | `"Run"` \| `"Change"` | En **`database/schemaV2.sql`** la columna `type` es **NULL** permitido; el **CHECK** `initiative_type_check` solo restringe valores **no nulos** a `Run` o `Change`. Si omitís `type`, el INSERT guarda **NULL** (válido). Si enviás otro string, Postgres responde error (`500` vía handler). Para datos coherentes con el modelo PDLC, enviad siempre `Run` o `Change`. |
-| `product` | No | string \| null | |
-| `currentGateId` | No | string | Si se omite, se guarda **`G0`**. |
-| `startDate`, `endDate`, `quarter`, `status` | No | string \| null | |
-| `intakeRequestId` | No | string \| null | |
-| `pipelineActivated` | No | boolean | Default **`false`**. |
-| `artifacts` | No | array (JSON) | Default **`[]`** (se persiste como JSON en columna `artifacts`). |
-
-**Campos que el cuerpo no debe usar para semántica distinta:** no hay otros endpoints; `id` no se puede sustituir después salvo borrar y crear de nuevo.
-
-**Respuesta `200`:** un objeto **Initiative** (misma forma que en GET).
+| **Path** | **`publicId`** — UUID de la iniciativa en KashioOS |
+| **Body** | Ninguno |
+| **Upstream** | `GET {KASHIOS_API_BASE_URL}/api/v1/initiatives/:publicId` con `Authorization: Bearer` |
+| **Operación SQL** | `INSERT … ON CONFLICT (public_id) DO UPDATE …` |
+| **Respuesta `201`** | Primera vez que la iniciativa existe en ARIA; cuerpo = objeto **Initiative** (snapshot completo almacenado, incluye `phases` como jsonb de KashioOS). |
+| **Respuesta `200`** | Ya existía; se actualizó el snapshot. |
+| **Errores** | `400` UUID inválido; `404` KashioOS no encontró la iniciativa; `500` faltan env vars; `502`/`504` error o timeout upstream. |
 
 ---
 
-### `PUT /karia-svc/v2/initiatives/:id`
+### `GET /karia-svc/v2/initiatives/:publicId`
 
 | | |
 |--|--|
-| **Operación SQL** | `UPDATE initiative SET … WHERE id = $n RETURNING *` |
-| **Path** | `id` — identificador de la fila |
-| **Content-Type** | `application/json` |
-
-**Cuerpo:** objeto parcial (**InitiativeUpdate** = cualquier subconjunto de campos de **Initiative**). Solo se actualizan claves **presentes** en el JSON (patch real).
-
-**Mapeados a columnas SQL** (camelCase → BD):
-
-`name`, `product`, `currentGateId`, `type`, `startDate`, `endDate`, `quarter`, `status`, `intakeRequestId`, `pipelineActivated`, **`artifacts`** (se serializa a JSON).
-
-- **`id`:** no se puede cambiar por este endpoint (el `id` va en la URL; si enviás `id` en el body, **se ignora** para el UPDATE).
-- Cualquier otra clave no listada arriba **se ignora** silenciosamente.
-
-**Respuestas:**
-
-| Código | Situación |
-|--------|-----------|
-| `200` | Fila actualizada; cuerpo = **Initiative** actualizado. |
-| `400` | Cuerpo vacío (ningún campo reconocido) → `"No fields to update"`. |
-| `404` | No existe fila con ese `id` (o ningún campo aplicable y 0 filas afectadas según lógica del repo). |
+| **Path** | **`publicId`** — UUID |
+| **Operación SQL** | `SELECT` fila `initiative` + lectura de **`artifact_definition`** (agrupación por `phase` en servicio) |
+| **Respuesta `200`** | **InitiativeDetail**: datos de la iniciativa + `totalArtifacts` + `phases` (siempre **8** entradas). Cada fase incluye `phaseNumber`, `phaseLabel`, estado del snapshot KashioOS, `artifactsCount` y `artifacts[]` (definiciones del catálogo con esa `phase`). |
+| **Respuesta `404`** | No hay copia local (hacer sync primero). |
 
 ---
 
-### `DELETE /karia-svc/v2/initiatives/:id`
+### `PUT /karia-svc/v2/initiatives/:publicId` *(ruta deshabilitada en router)*
+
+El handler y el servicio existen; la línea **`router.put('/:publicId', …)`** está **comentada** en `src/routes/initiativeRoutes.ts` hasta habilitarla.
 
 | | |
 |--|--|
-| **Operación SQL** | `DELETE FROM initiative WHERE id = $1` |
+| **Body** | JSON parcial; hoy solo **`status`** (string, se normaliza a mayúsculas). |
+| **Operación SQL** | `UPDATE initiative SET status = $1 WHERE public_id = $2` |
+| **Respuesta `200`** | Objeto **Initiative** actualizado. |
+| **Respuesta `404`** | No existe la fila. |
+
+---
+
+### `DELETE /karia-svc/v2/initiatives/:publicId`
+
+| | |
+|--|--|
+| **Operación SQL** | **`UPDATE`** — soft-delete: `status = 'DELETED'` (no se ejecuta `DELETE`). |
 | **Body** | Ignorado |
-| **Respuesta `200`** | Siempre `{ "success": true }` **aunque** el `id` no existiera (DELETE de 0 filas no genera error en el código actual). |
+| **Respuesta `200`** | `{ "success": true, "softDeleted": true, "initiative": { … } }` |
+| **Respuesta `404`** | No existe iniciativa con ese `publicId`. |
 
 ---
 
@@ -346,9 +314,10 @@ Hace falta al menos **`phase` o `phaseName`** en el body; si envías **ambos**, 
 | GET | `/karia-svc/v2/health` | — |
 | GET | `/karia-svc/v2/health/db` | — |
 | GET | `/karia-svc/v2/initiatives` | — |
-| POST | `/karia-svc/v2/initiatives` | JSON InitiativeInput |
-| PUT | `/karia-svc/v2/initiatives/:id` | JSON parcial Initiative |
-| DELETE | `/karia-svc/v2/initiatives/:id` | — |
+| POST | `/karia-svc/v2/initiatives/sync/:publicId` | — (sin body; requiere env KashioOS) |
+| GET | `/karia-svc/v2/initiatives/:publicId` | — |
+| PUT | `/karia-svc/v2/initiatives/:publicId` | JSON `{ "status": "…" }` *(ruta comentada en código hasta habilitarla)* |
+| DELETE | `/karia-svc/v2/initiatives/:publicId` | — (soft-delete) |
 | GET | `/karia-svc/v2/intakes` | — |
 | GET | `/karia-svc/v2/artifact-definitions` | Query opcional: `name`, `publicId`, `initiativeType`, `area`, `sortBy`, `sortOrder` |
 | GET | `/karia-svc/v2/artifact-definitions/:publicId` | — |
@@ -362,7 +331,7 @@ Hace falta al menos **`phase` o `phaseName`** en el body; si envías **ambos**, 
 
 | Tabla | Coincidencia con esta doc |
 |-------|---------------------------|
-| **`initiative`** | Columnas usadas por el repo coinciden con el DDL (`id`, `name`, `product`, `current_gate_id` default `G0`, `type` nullable + CHECK, fechas como `varchar`, `artifacts` jsonb default `[]`, `pipeline_activated` default false). Los triggers llaman a `update_updated_at_column()` (la función debe existir en la BD; ver `database/README.md`). |
+| **`initiative`** | Modelo vigente: snapshot KashioOS (`public_id` uuid UNIQUE, `code`, `title`, `description`, `status`, `current_phase`, `initiative_type` CHECK `CHANGE`/`NEW_PRODUCT`, `product_name`, `quarter_*`, fechas estimadas, `intake_origin_code`, `phases` jsonb, `synced_at`, timestamps). Migración destructiva: `database/migrations/004_initiative_kashio_sync.sql`. Ver **`docs/Integracion_Iniciativas_KashioOS.md`**. |
 | **`intake_request`** | El GET refleja las columnas del `SELECT *`; `requester` y `problem` son **NOT NULL** en DDL; el JSON del API sigue los tipos en `src/types/intake.ts`. |
 | **`artifact_definition`** | Modelo vigente: `id` bigserial, `public_id` uuid, `phase` 1–8 (renombrada desde la legacy `fase` por `database/migrations/002_rename_fase_to_phase.sql`), `predecessor_names` jsonb, `initiative_type` CHECK `Change`/`Run`/`Both`. Ver `database/schemaV2.sql` y migraciones en `database/migrations/`. |
 | **`library_file`** | Existe en `schemaV2.sql` pero **no** hay rutas Express documentadas aquí que lean/escriban esa tabla (solo GCS en otras rutas). |

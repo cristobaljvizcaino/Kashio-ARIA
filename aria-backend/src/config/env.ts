@@ -24,6 +24,15 @@ export const env = {
     bucketName: process.env.GCS_BUCKET_NAME || 'karia-library-files',
   },
 
+  kashios: {
+    /** Base URL del API de iniciativas de KashioOS, p.ej. https://kpdlc-svc-app-XXXX.us-east4.run.app */
+    baseUrl: (process.env.KASHIOS_API_BASE_URL || '').replace(/\/+$/, ''),
+    /** Bearer token con permisos de lectura sobre `/api/v1/initiatives/:id`. */
+    token: process.env.KASHIOS_API_TOKEN || '',
+    /** Timeout de la llamada saliente (ms). */
+    timeoutMs: Number(process.env.KASHIOS_TIMEOUT_MS || 15000),
+  },
+
 } as const;
 
 export type AppEnv = typeof env;

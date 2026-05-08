@@ -90,7 +90,7 @@ Region habitual: **`us-central1`**. Las **8 Cloud Run Functions HTTP** del backe
 | **Biblioteca y artefactos (GCS)** | **Kashio FinOps** — **`Kashio-Finops`** | Bucket **`karia-library-files`**, **us-central1 (Iowa)**, clase **Standard**, **no publico**. Estructura: `Contexto/`, `Prompt/`, `Template/`, `Output/` (subcarpetas **`Phase-1/` … `Phase-8/`**). |
 | **Secret Manager — clave Gemini** | **Kashio FinOps** — **`Kashio-Finops`** | Secreto **`gemini-api-key`**, versión **1**, estado **Habilitada**, cifrado administrado por Google. Ruta `projects/kashio-finops/secrets/gemini-api-key`. Consumido por `functions/api` (y opcionalmente por Cloud Run vía `--set-secrets`). |
 | **Cloud Run Functions (8 endpoints activos)** | **Kashio FinOps** — **`Kashio-Finops`** | URLs con formato `https://{nombre}-476648227615.us-central1.run.app`. 4 IA: `health`, `ariachat`, `generateartifact`, `analyzeintake`. 4 Library: `getlibraryfiles`, `getlibraryuploadurl`, `downloadlibraryfile`, `deletelibraryfile`. Catálogo en **`docs/DEPLOYED_ENDPOINTS.md`**. |
-| **API REST Postgres + GCS (monolito)** | **Kashio FinOps** (proyecto del servicio Cloud Run `aria-backend`) | Rutas bajo **`/karia-svc/v2/`** (`initiatives`, `intakes`, `artifact-definitions`, `library/*`, `artifacts/*`). Requiere **`ConnectionString_Karia`** y permisos de Storage sobre **`karia-library-files`**. |
+| **API REST Postgres + GCS (monolito)** | **Kashio FinOps** (proyecto del servicio Cloud Run `aria-backend`) | Rutas bajo **`/karia-svc/v2/`** (`initiatives`, `intakes`, `artifact-definitions`, `library/*`, `artifacts/*`). Requiere **`ConnectionString_Karia`** y permisos de Storage sobre **`karia-library-files`**. Para sincronizar iniciativas desde KashioOS: **`KASHIOS_API_BASE_URL`** y **`KASHIOS_API_TOKEN`** (ver **`docs/Integracion_Iniciativas_KashioOS.md`**). |
 
 **Nombre del bucket:** el **ID de recurso en GCP** es **`karia-library-files`** (globally unique, en minusculas). Si en reuniones o specs aparece un nombre tipo **"Cloud ARIA Library files"**, debe mapearse a ese ID. En runtime se puede sobreescribir con **`GCS_BUCKET_NAME`** (ver §8.1).
 
@@ -278,7 +278,7 @@ Esquema objetivo para **BD nueva (v2)**: **4 tablas**, DDL en repo en **`databas
 
 | Tabla | Endpoints que la usan hoy (prefijo **`/karia-svc/v2/`**) | Notas |
 |-------|----------------------------------------|--------|
-| **`initiative`** | `GET/POST /initiatives`, `PUT/DELETE /initiatives/:id` | CRUD completo. |
+| **`initiative`** | `GET /initiatives`, `GET /initiatives/:publicId`, `POST /initiatives/sync/:publicId`, `DELETE /initiatives/:publicId`; `PUT /initiatives/:publicId` (ruta comentada en código, handler listo) | Snapshot local de iniciativas **elegidas** para ARIA; origen KashioOS. Ver **`docs/Integracion_Iniciativas_KashioOS.md`**. |
 | **`intake_request`** | Solo `GET /intakes` | Sin POST/PUT/DELETE en Express. |
 | **`artifact_definition`** | `GET /artifact-definitions`, `GET …/:publicId`, `POST /artifact-definitions`, `PUT/DELETE …/:publicId` | Modelo **`phase`** 1–8 (PDLC KashioOS), **`public_id`** (UUID) en rutas de detalle/actualización/borrado, **`predecessor_names`** (jsonb, nombres). Ver **`docs/API_DATABASE_ENDPOINTS.md`** §4. **No** hay tabla `phases` en el esquema mínimo actual. |
 | **`library_file`** | *(ninguno todavía)* | Catálogo de ficheros alineado con **GCS** (`storage_url`, categorías Contexto/Prompt/Template/Output). Integración pendiente en `/karia-svc/v2/library/*` y `/karia-svc/v2/artifacts/publish*`. |
@@ -313,14 +313,19 @@ Convención: base URL = origen del backend (ej. `https://xxx.run.app` o `http://
 
 Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete** en la misma petición en la que se confirma el objeto en GCS (evitar desalineación bucket ↔ SQL).
 
-### 6.3 Base de datos — iniciativas
+### 6.3 Base de datos — iniciativas (KashioOS → ARIA)
 
-| Método | Ruta | Tabla |
-|--------|------|--------|
-| GET | `/karia-svc/v2/initiatives` | `initiative` (lectura) |
-| POST | `/karia-svc/v2/initiatives` | `initiative` (INSERT) |
-| PUT | `/karia-svc/v2/initiatives/:id` | `initiative` (UPDATE) |
-| DELETE | `/karia-svc/v2/initiatives/:id` | `initiative` (DELETE) |
+Las iniciativas **no** se crean con un POST genérico en ARIA: solo existen filas locales tras **`POST /initiatives/sync/:publicId`**, que llama al API de KashioOS y hace **UPSERT** por **`public_id`** (UUID = `id` upstream). El **`DELETE`** es **soft-delete** (`status = 'DELETED'`); no elimina la fila.
+
+| Método | Ruta | Tabla | Notas |
+|--------|------|--------|--------|
+| GET | `/karia-svc/v2/initiatives` | `initiative` | Listado liviano (**InitiativeSummary**), orden `synced_at DESC`. |
+| GET | `/karia-svc/v2/initiatives/:publicId` | `initiative` + lectura **`artifact_definition`** | Detalle (**InitiativeDetail**): 8 fases con artefactos del catálogo por fase. **`publicId`** = UUID. |
+| POST | `/karia-svc/v2/initiatives/sync/:publicId` | `initiative` (UPSERT) | Requiere **`KASHIOS_API_BASE_URL`** y **`KASHIOS_API_TOKEN`**. **`201`** primera vez, **`200`** actualización. |
+| PUT | `/karia-svc/v2/initiatives/:publicId` | `initiative` (UPDATE parcial) | **Ruta deshabilitada** en `src/routes/initiativeRoutes.ts` (comentada); al descomentarla, body hoy solo **`status`** (override local / restaurar tras soft-delete). |
+| DELETE | `/karia-svc/v2/initiatives/:publicId` | `initiative` (soft-delete) | **`200`**: `{ success, softDeleted, initiative }`. **`404`** si no existe. |
+
+Contrato, variables de entorno y ejemplos: **[`docs/Integracion_Iniciativas_KashioOS.md`](Integracion_Iniciativas_KashioOS.md)**. Colección Postman: carpeta **3. Initiatives (KashioOS sync)**.
 
 ### 6.4 Base de datos — intakes
 
@@ -340,7 +345,7 @@ Tras integrar **`library_file`**, lo habitual será **INSERT/UPDATE/soft-delete*
 
 ### 6.6 Contrato HTTP detallado (solo PostgreSQL)
 
-Cuerpos JSON (camelCase), respuestas, códigos de error y validaciones (p. ej. **`phase`** / **`phaseName`**, **`predecessorNames`**): **[`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md)**. La colección Postman **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas 2–5, incl. **Artifact definitions**) debe mantenerse alineada con ese documento.
+Cuerpos JSON (camelCase), respuestas, códigos de error y validaciones (p. ej. **`phase`** / **`phaseName`**, **`predecessorNames`**): **[`docs/API_DATABASE_ENDPOINTS.md`](API_DATABASE_ENDPOINTS.md)**. Iniciativas (sync KashioOS, listado, detalle, soft-delete): **[`docs/Integracion_Iniciativas_KashioOS.md`](Integracion_Iniciativas_KashioOS.md)**. La colección Postman **`postman/Karia-ARIA-Backend.postman_collection.json`** (carpetas 2–6, incl. **Initiatives** y **Artifact definitions**) debe mantenerse alineada con esos documentos.
 
 ---
 
