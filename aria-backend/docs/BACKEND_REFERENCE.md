@@ -33,7 +33,51 @@ La carpeta **`functions/`** está en **`.dockerignore`**: no se copia al build d
 | **@google-cloud/functions-framework** | Solo en **`functions/*/index.js`**: convierte handlers HTTP en funciones desplegables como **Cloud Functions (2ª gen)**. |
 | **@google/generative-ai** | Solo en **`functions/api/index.js`**: llamadas a **Gemini**; la clave en prod viene de **Secret Manager** (no del `.env` del Express). |
 | **Docker** | Empaqueta `dist/` + `node_modules` de producción para **Cloud Run**. |
-| **Cloud Build** | CI/CD en GCP: construye imagen y ejecuta `gcloud run deploy`. |
+| **Cloud Build** | Opcional en GCP para construir imagen de contenedor o automatizar pasos puntuales; el flujo de referencia arquitectónico es **despliegue directo** sin pipeline CI/CD obligatorio (ver §3.0). |
+
+### 2.1 Stack tecnológico — frontend y backend (estado actual del workspace)
+
+Resumen de **tecnologías y librerías principales** según los `package.json` del monorepo local (Bitbucket KAI: repos **`mfe-kashio-aria`** frontend y **`ms-kashio-aria-api`** backend). Si el front en disco conserva otro `name` en npm (`mfe-aria-portal`), lo relevante es el **repo** y el contenido de dependencias.
+
+#### Backend — API monolito (`aria-backend/` → **`ms-kashio-aria-api`**)
+
+| Área | Tecnología |
+|------|------------|
+| **Lenguaje** | **TypeScript** (compila a JS en `dist/`). |
+| **Runtime** | **Node.js** ≥ 22 (`engines`; imagen Docker **`node:24-alpine`**). |
+| **Framework HTTP** | **Express 5** (`express`). |
+| **Base de datos** | **PostgreSQL** cliente **`pg`** (`node-postgres`). |
+| **Almacenamiento archivos** | **Google Cloud Storage** (`@google-cloud/storage`). |
+| **HTTP / utilidades** | **CORS** (`cors`), variables **`dotenv`**. |
+| **Build / dev local** | **TypeScript** compiler, **`tsx watch`** para `npm run dev`. |
+| **Despliegue** | **Docker** multi-stage → **Cloud Run** (contenedor solo incluye API TS, no `functions/`). |
+
+#### Backend — Cloud Functions IA y biblioteca (`aria-backend/functions/`)
+
+Despliegue **aparte** del contenedor Express; hoy el código fuente es **JavaScript (ESM)** — **`index.js`**, `"type": "module"` — no TypeScript.
+
+| Área | Tecnología |
+|------|------------|
+| **Runtime** | **Node.js** ≥ 22. |
+| **Plataforma** | **Cloud Functions 2ª gen** (`@google-cloud/functions-framework`). |
+| **IA** | **Gemini** (`@google/generative-ai`), secretos **`@google-cloud/secret-manager`**. |
+| **HTTP** | **CORS** en handlers HTTP. |
+
+#### Frontend (`aria-frontend/` → repo **`mfe-kashio-aria`**)
+
+| Área | Tecnología |
+|------|------------|
+| **Lenguaje** | **TypeScript**. |
+| **UI** | **React 19** + **React DOM**. |
+| **Enrutamiento** | **React Router** v7 (`react-router-dom`). |
+| **Build / dev server** | **Vite 6** + **`@vitejs/plugin-react`**. |
+| **Autenticación** | **Microsoft Entra ID** vía **MSAL** (`@azure/msal-browser`, `@azure/msal-react`). |
+| **Markdown / contenido** | **react-markdown**, **remark-gfm**, **marked**. |
+| **Gráficos** | **Recharts**. |
+| **Iconos** | **Lucide React**. |
+| **Exportación PDF / captura** | **jsPDF**, **html2canvas**. |
+| **Cliente Gemini (navegador)** | **`@google/generative-ai`** (además de las funciones GCP). |
+| **Estilos / tipografía** | **`@tailwindcss/typography`** (devDependency; revisar CSS del proyecto para el resto del sistema de estilos). |
 
 ---
 
@@ -83,6 +127,101 @@ Region habitual: **`us-central1`**. Las **8 Cloud Run Functions HTTP** del backe
 |  * demás secretos CI/CD -> proyecto donde viva Cloud Build (consola)|
 +----------------------------------------------------------------------+
 ```
+
+### 3.0 Diagrama de arquitectura — Karia / ARIA en GCP (visión actual)
+
+Visión alineada con **ARIA 2.0** y este documento. **Frontend** y **backend** se publican en **Google Cloud** en cada nivel acordado. No se asume AWS ni **AWS Secrets Manager**.
+
+#### Repositorios Bitbucket (organización **KAI**)
+
+| Rol | Repositorio |
+|-----|-------------|
+| **Frontend** | **`mfe-kashio-aria`** |
+| **Backend / API (admin)** | **`ms-kashio-aria-api`** — API REST, datos de negocio, biblioteca y artefactos vía Express (`/karia-svc/v2`) y despliegue en **Cloud Run**. |
+
+#### Estrategia de ramas (igual en front y en back)
+
+| Rama | Nivel de despliegue |
+|------|---------------------|
+| **`app`** | **Dev** y **QA** |
+| **`stage`** | **Stage** |
+| **`cert`** | **Certificación** |
+| **`main`** | **Producción** |
+
+#### URLs por nivel (resumen)
+
+| Nivel | Contrato de URLs |
+|-------|------------------|
+| **Dev + QA** (rama `app`) | **Un solo par**: **una URL de frontend** y **una URL de backend**, compartidas por desarrollo y QA. El API puede enrutar a **dos PostgreSQL** y **dos buckets GCS** (Dev vs QA) para no mezclar datos; la forma exacta (cabecera, perfil, revisiones, etc.) la define operaciones. |
+| **Stage** | **URLs distintas** respecto a Dev/QA: una para frontend y una para backend. |
+| **Certificación** | **URLs distintas** (front y back propias de certificación). |
+| **Producción** | **URLs distintas** (front y back propias de producción). |
+
+En **Stage**, **Certificación** y **Producción**, cada nivel tiene siempre **su propia** URL de UI y **su propia** URL de API.
+
+#### Matriz de capas GCP por nivel
+
+En cada fila: **qué capa** existe para ese contexto (**Dev**, **QA**, **Stage**, **Certificación**, **Producción**). Los **IDs** de bucket, instancia Cloud SQL y nombres de secretos los define **operaciones / FinOps**.
+
+| Nivel | PostgreSQL | Cloud Storage (bucket GCS) | Secret Manager | Cloud Functions Gen 2 | Cloud Run | Hosting frontend |
+|-------|------------|----------------------------|----------------|----------------------|-----------|------------------|
+| **Dev** | Instancia o BD **dedicada Dev**; cadena vía secreto / variable (`ConnectionString_Karia` o equivalente). | Bucket **Dev** (`GCS_BUCKET_NAME` apuntando solo a Dev). | Secretos **Dev** (URI BD, `gemini-api-key` si aplica, otros). | Despliegue **Dev** de las 8 funciones (§7) o revisión compartida con QA si operaciones lo unifica. | Servicio **Dev** del API (`ms-kashio-aria-api`). | **Misma URL UI** compartida Dev+QA (rama `app`). |
+| **QA** | Instancia o BD **dedicada QA** (distinta de Dev). | Bucket **QA** distinto de Dev. | Secretos **QA**. | Misma política que la fila Dev (compartidas o duplicadas según estándar). | Servicio **QA** del API o misma URL pública con selección de backend según acuerdo. | **Misma URL UI** compartida Dev+QA. |
+| **Stage** | BD **Stage**. | Bucket **Stage**. | Secretos **Stage**. | Funciones **Stage**. | Cloud Run **Stage**. | Hosting **Stage**. |
+| **Certificación** | BD **Certificación**. | Bucket **Certificación**. | Secretos **Certificación**. | Funciones **Certificación**. | Cloud Run **Certificación**. | Hosting **Certificación**. |
+| **Producción** | BD **Producción**. | Bucket **Producción**. | Secretos **Producción**. | Funciones **Producción**. | Cloud Run **Producción**. | Hosting **Producción**. |
+
+**Vertex AI** (Gemini): capa transversal en GCP; las funciones IA la invocan usando IAM y secretos del nivel correspondiente.
+
+**Despliegue:** sin **CI/CD obligatorio**; referencia **directa en GCP** (`gcloud`, consola). **Cloud Build** opcional (§2). **Archivos** del producto viven en **Cloud Storage** (rutas tipo `Contexto/`, `Output/Phase-*`, etc. — §3.1).
+
+```mermaid
+flowchart TB
+  subgraph FILA1[" "]
+    direction LR
+    subgraph STACK_BE["Stack backend"]
+      SB["TypeScript<br/>Cloud Storage<br/>Node.js<br/>Express<br/>PostgreSQL<br/>Docker · Cloud Run"]
+    end
+    subgraph ORIGEN["Origen — Bitbucket KAI"]
+      direction TB
+      REP_FE["Frontend<br/>mfe-kashio-aria"]
+      REP_BE["Backend API admin<br/>ms-kashio-aria-api"]
+      BR["Ramas ambos repos:<br/>app · stage · cert · main"]
+      REP_FE --> BR
+      REP_BE --> BR
+    end
+    subgraph STACK_FE["Stack frontend"]
+      SF["TypeScript<br/>Cloud Functions<br/>React · React DOM<br/>React Router<br/>Vite<br/>MSAL · Azure AD"]
+    end
+  end
+
+  subgraph NIVELES["Despliegues en GCP para Frontend y backend"]
+    direction TB
+    N1["Dev + QA — Ambientes compartidos tanto para Frontend y Backend"]
+    N2["Stage"]
+    N3["Certificación"]
+    N4["Producción"]
+  end
+
+  subgraph CAPAS["En Google Cloud: datos, archivos, seguridad, automatización e IA"]
+    direction LR
+    L_PG["PostgreSQL por ambiente<br/>Dev, QA, Stage, Cert, Prod"]
+    L_GCS["Cloud Storage bucket por ambiente<br/>Dev, QA, Stage, Cert, Prod"]
+    L_SM["Secret Manager por nivel<br/>para manejo de seguridad"]
+    L_CF["Cloud Functions ×8 Gen 2"]
+    L_VTX["Vertex AI"]
+    L_PG --- L_GCS --- L_SM --- L_CF --- L_VTX
+  end
+
+  BR --> NIVELES
+  NIVELES --> CAPAS
+```
+
+La tabla **Matriz de capas GCP por nivel** sigue siendo el detalle técnico (incluye **Cloud Run** para API y hosting). El diagrama muestra **stack backend a la izquierda**, **origen Bitbucket al centro**, **stack frontend a la derecha**, y debajo los niveles de despliegue y el bloque en lenguaje sencillo de componentes en la nube (incluido **Vertex AI**).
+
+**Código de este repo:** valores por defecto como **`karia-library-files`** reflejan un entorno concreto; en multi-nivel cada despliegue usa **su** `GCS_BUCKET_NAME` y cadena de BD.
+
+**Cloud Functions (patrón §7):** región habitual **`us-central1`**. IA: `health`, `ariachat`, `generateartifact`, `analyzeintake`. Biblioteca: `getlibraryfiles`, `getlibraryuploadurl`, `downloadlibraryfile`, `deletelibraryfile`.
 
 ### 3.1 Estructura de objetos en `karia-library-files` (Kashio FinOps)
 

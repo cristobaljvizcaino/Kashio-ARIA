@@ -66,6 +66,7 @@ ARIA 2.0 es un módulo independiente dentro de KashioOS que se enfoca exclusivam
 - Archivo de Configuración ARIA v1.0.0.0 (`config/ARIA_config_v1.0.0.0.md`)  
 - Configuración de Versiones de Prompts y Plantillas v1.0.0.2 (`context/Version_config_promts&templates_v1.0.0.2.md`)  
 - Presentación ARIA (`input/ARIA 2.0/ARIA.pptx`)  
+- Arquitectura técnica de despliegue Karia / ARIA en GCP (diagrama Mermaid, ramas `app` / `stage` / `cert` / `main`, repos **KAI** `mfe-kashio-aria` y `ms-kashio-aria-api`): `aria-backend/docs/BACKEND_REFERENCE.md` (§3 y §3.0).  
 
 ---
 
