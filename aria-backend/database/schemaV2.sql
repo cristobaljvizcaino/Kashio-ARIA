@@ -10,19 +10,32 @@ CREATE TABLE public.artifact_definition (
 	phase int2 NOT NULL,
 	"name" varchar(500) NOT NULL,
 	initiative_type varchar(20) DEFAULT 'Both'::character varying NULL,
-	predecessor_names jsonb DEFAULT '[]'::jsonb NULL,
+	product_type jsonb DEFAULT '[]'::jsonb NULL,
+	predecessor_public_ids jsonb DEFAULT '[]'::jsonb NULL,
 	description text NULL,
 	mandatory bool DEFAULT false NULL,
 	area varchar(50) DEFAULT 'Producto'::character varying NULL,
+	status int2 NOT NULL DEFAULT 1,
 	created_at timestamptz DEFAULT now() NULL,
 	updated_at timestamptz DEFAULT now() NULL,
 	CONSTRAINT artifact_definition_phase_check CHECK (((phase >= 1) AND (phase <= 8))),
-	CONSTRAINT artifact_definition_initiative_type_check CHECK (((initiative_type)::text = ANY (ARRAY[('Change'::character varying)::text, ('Run'::character varying)::text, ('Both'::character varying)::text]))),
+	CONSTRAINT artifact_definition_initiative_type_check CHECK (((initiative_type)::text = ANY (ARRAY[('Both'::character varying)::text, ('Change'::character varying)::text, ('New_Product'::character varying)::text]))),
+	CONSTRAINT artifact_definition_product_type_check CHECK ((product_type IS NULL OR jsonb_typeof(product_type) = 'array')),
+	CONSTRAINT artifact_definition_predecessor_public_ids_check CHECK ((predecessor_public_ids IS NULL OR jsonb_typeof(predecessor_public_ids) = 'array')),
+	CONSTRAINT artifact_definition_status_check CHECK (status IN (0, 1)),
 	CONSTRAINT artifact_definition_pkey PRIMARY KEY (id),
-	CONSTRAINT artifact_definition_public_id_key UNIQUE (public_id)
+	CONSTRAINT artifact_definition_public_id_key UNIQUE (public_id),
+	CONSTRAINT artifact_definition_name_key UNIQUE ("name")
 );
 CREATE INDEX idx_artdef_phase ON public.artifact_definition USING btree (phase);
 CREATE INDEX idx_artdef_type ON public.artifact_definition USING btree (initiative_type);
+CREATE INDEX idx_artdef_area ON public.artifact_definition USING btree (area);
+CREATE INDEX idx_artdef_status ON public.artifact_definition USING btree (status);
+CREATE INDEX idx_artdef_product_type ON public.artifact_definition USING gin (product_type);
+CREATE INDEX idx_artdef_predecessor_public_ids ON public.artifact_definition USING gin (predecessor_public_ids);
+
+COMMENT ON COLUMN public.artifact_definition.status IS
+	'Activo/inactivo del artefacto en el catalogo. 1 = Activo (default), 0 = Inactivo/soft-delete.';
 
 -- Table Triggers
 
@@ -53,6 +66,7 @@ CREATE TABLE public.initiative (
 	estimated_start_date  date           NULL,
 	estimated_end_date    date           NULL,
 	intake_origin_code    varchar(50)    NULL,
+	product_type          varchar(20)    NULL,
 	phases                jsonb          DEFAULT '[]'::jsonb NULL,
 	synced_at             timestamptz    DEFAULT now() NOT NULL,
 	created_at            timestamptz    DEFAULT now() NOT NULL,
@@ -62,13 +76,19 @@ CREATE TABLE public.initiative (
 	CONSTRAINT initiative_current_phase_check
 		CHECK (current_phase IS NULL OR (current_phase BETWEEN 1 AND 8)),
 	CONSTRAINT initiative_initiative_type_check
-		CHECK (initiative_type IS NULL OR initiative_type IN ('CHANGE', 'NEW_PRODUCT'))
+		CHECK (initiative_type IS NULL OR initiative_type IN ('CHANGE', 'NEW_PRODUCT')),
+	CONSTRAINT initiative_product_type_check
+		CHECK (product_type IS NULL OR product_type IN ('Offering', 'Sellable', 'Non_Sellable'))
 );
 CREATE INDEX idx_initiative_status        ON public.initiative USING btree (status);
 CREATE INDEX idx_initiative_type          ON public.initiative USING btree (initiative_type);
 CREATE INDEX idx_initiative_current_phase ON public.initiative USING btree (current_phase);
 CREATE INDEX idx_initiative_quarter       ON public.initiative USING btree (quarter_year, quarter_name);
 CREATE INDEX idx_initiative_code          ON public.initiative USING btree (code);
+CREATE INDEX idx_initiative_product_type  ON public.initiative USING btree (product_type);
+
+COMMENT ON COLUMN public.initiative.product_type IS
+	'Tipo de producto de la iniciativa (Offering | Sellable | Non_Sellable). Lo envia el front en POST /initiatives/sync junto con publicId. Al renderizar el detalle (GET /initiatives/:publicId) ARIA filtra los artefactos de cada fase por contenido de artifact_definition.product_type. Si es NULL no se aplica filtro.';
 
 -- Table Triggers
 

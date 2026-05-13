@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
     "name": "Karia ARIA Backend",
-    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API. Tras **Sync initiative from KashioOS**, copia `publicId` a **`initiativePublicId`**. Tras **Create artifact definition**, copia `publicId` a **`artifactDefPublicId`** para GET/PUT/DELETE.\n\n**Iniciativas:** requieren `KASHIOS_API_BASE_URL` y `KASHIOS_API_TOKEN` en `.env` para **POST …/initiatives/sync/:publicId**.",
+    "description": "Colección del servicio Express **aria-backend**.\n\n- **Raíz:** `GET /health` (liveness, sin prefijo).\n- **API:** prefijo `{{baseUrl}}/{{apiPrefix}}/` (por defecto `karia-svc/v2`).\n\n**Contrato detallado (solo PostgreSQL):** `docs/API_DATABASE_ENDPOINTS.md` en el repo.\n\nAjusta **baseUrl** (ej. `http://localhost:3000`). Los bodies usan **camelCase** como en la API. Tras **Sync initiative from KashioOS**, copia `publicId` a **`initiativePublicId`**. Tras **Create artifact definition**, copia `publicId` a **`artifactDefPublicId`** para GET/PUT/DELETE.\n\n**Artifact definitions:** contrato actualizado a migración 005: `initiativeType` (`Both`/`Change`/`New_Product`), `productType`, `predecessorPublicIds` y `status` (`1` activo, `0` inactivo). El DELETE es soft-delete (`status=0`) y el listado default muestra solo activos.\n\n**Iniciativas:** requieren `KASHIOS_API_BASE_URL` y `KASHIOS_API_TOKEN` en `.env`. Migración 006: **POST …/initiatives/sync** recibe body `{ publicId, productType? }`. `publicId` es obligatorio; `productType` (`Offering`/`Sellable`/`Non_Sellable`) es **opcional**: si se envía, el detalle filtra los artefactos del catálogo por ese tipo de producto + el initiativeType de la iniciativa; si se omite, se muestran todos los artefactos activos sin filtro y la iniciativa queda con `product_type = NULL` (o conserva el valor previo).",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -67,12 +67,58 @@
           "response": []
         },
         {
-          "name": "Sync initiative from KashioOS",
+          "name": "Sync initiative from KashioOS (sin productType — sin filtro)",
           "request": {
             "method": "POST",
-            "header": [],
-            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync/{{initiativePublicId}}",
-            "description": "Trae la iniciativa desde KashioOS (`GET …/api/v1/initiatives/:id` con `KASHIOS_API_TOKEN`) y hace **UPSERT** en `initiative` por `public_id`.\n\n**`201`**: primera vez en ARIA. **`200`**: ya existía, se actualizó.\n\n**`400`**: UUID inválido. **`404`**: KashioOS no encontró la iniciativa. **`500`**: faltan `KASHIOS_API_BASE_URL` / `KASHIOS_API_TOKEN`. **`502`/`504`**: error o timeout upstream.\n\nSin body. Requiere variables de entorno en el servidor (ver `docs/Integracion_Iniciativas_KashioOS.md`)."
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicId\": \"{{initiativePublicId}}\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync",
+            "description": "**Body mínimo:** solo `publicId`. `productType` es **opcional** y aquí se omite.\n\n**Comportamiento:**\n- Trae la iniciativa de KashioOS y hace UPSERT en `initiative` por `public_id`.\n- Si la iniciativa NO existía → se crea con `product_type = NULL`.\n- Si ya existía → se conserva el `product_type` previo (no se borra).\n- En `GET /:publicId`, mientras `product_type` siga `NULL` el detalle muestra **todos** los artefactos activos del catálogo (sin filtro por tipo de producto). `artifactsFilterApplied = false`.\n\n**`201`**: primera vez en ARIA. **`200`**: ya existía, se actualizó.\n\n**`400`**: body inválido o `publicId` no es UUID. **`404`**: KashioOS no encontró la iniciativa. **`500`**: faltan `KASHIOS_API_BASE_URL` / `KASHIOS_API_TOKEN`. **`502`/`504`**: error o timeout upstream."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync initiative from KashioOS (Sellable)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicId\": \"{{initiativePublicId}}\",\n  \"productType\": \"Sellable\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync",
+            "description": "Igual que la variante \"sin productType\" pero **opcionalmente** envía `productType`.\n\n**Body:** `{ \"publicId\": UUID, \"productType\"?: \"Offering\" | \"Sellable\" | \"Non_Sellable\" }`.\n- `publicId`: UUID de la iniciativa en KashioOS (también es el `public_id` en ARIA). **Obligatorio.**\n- `productType`: **opcional**. Si se envía un valor válido, se persiste en `initiative.product_type` y `GET /:publicId` filtra los artefactos activos del catálogo (`status=1`, `product_type @> [productType]`, `initiative_type IN ('Both', equivalente)`). Si se omite, se preserva el valor previo (o se queda `NULL` si era el primer insert) y no se aplica filtro.\n\n**`201`**: primera vez en ARIA. **`200`**: ya existía, se actualizó (si vino `productType`, se reescribe).\n\n**`400`**: `publicId` no es UUID o `productType` viene con un valor no permitido (`Offering`/`Sellable`/`Non_Sellable`). **`404`**: KashioOS no encontró la iniciativa. **`500`**: faltan `KASHIOS_API_BASE_URL` / `KASHIOS_API_TOKEN`. **`502`/`504`**: error o timeout upstream.\n\nVer `docs/Integracion_Iniciativas_KashioOS.md` y `docs/Migracion_006_Initiative_Product_Type.md`."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync initiative from KashioOS (Offering)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicId\": \"{{initiativePublicId}}\",\n  \"productType\": \"Offering\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync",
+            "description": "Variante con `productType = Offering` (producto-servicio / plataforma). El detalle excluirá artefactos exclusivos de Sellable (Brochure, Manejo de Objeciones, Playbook de Ventas, Manual de Producto, How-tos, Documentación Técnica Cliente, Reportes financieros, etc.)."
+          },
+          "response": []
+        },
+        {
+          "name": "Sync initiative from KashioOS (Non_Sellable)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"publicId\": \"{{initiativePublicId}}\",\n  \"productType\": \"Non_Sellable\"\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/sync",
+            "description": "Variante con `productType = Non_Sellable` (interno / componente / infra). El detalle dejará fuera artefactos comerciales (One-pager, Pitch Deck, Brochure, ICP, Product Marketing Strategy, Impacto COGS, etc.) y solo mostrará los artefactos cuyo `product_type` incluya `Non_Sellable`."
           },
           "response": []
         },
@@ -82,7 +128,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativePublicId}}",
-            "description": "**`200`**: **InitiativeDetail** — datos de la iniciativa + `totalArtifacts` + `phases` (siempre **8** entradas). Cada fase incluye `phaseNumber`, `phaseLabel`, estado del snapshot KashioOS (`status`, `enteredAt`, `completedAt`), `artifactsCount` y `artifacts[]` (filas de **`artifact_definition`** con esa `phase`).\n\n**`400`**: UUID inválido. **`404`**: no hay copia local (hacer **Sync** primero)."
+            "description": "**`200`**: **InitiativeDetail** — datos de la iniciativa + `totalArtifacts` + `artifactsFilterApplied` + `phases` (siempre **8** entradas). Cada fase incluye `phaseNumber`, `phaseLabel`, estado del snapshot KashioOS (`status`, `enteredAt`, `completedAt`), `artifactsCount` y `artifacts[]`.\n\n**Filtro de artefactos por iniciativa (Migración 006):**\n- Si la iniciativa tiene `productType` (lo guarda **POST /sync** desde el body), `artifacts[]` solo incluye artefactos del catálogo que cumplen: `status = 1` AND `product_type @> [productType]` AND `initiative_type IN ('Both', equivalente del initiativeType)`. `artifactsFilterApplied` = `true`.\n- Si la iniciativa todavía no tiene `productType` (sincronizada antes de la migración 006 y no re-sincronizada con el body nuevo), `artifacts[]` lista TODOS los activos. `artifactsFilterApplied` = `false`.\n\n**`400`**: UUID inválido. **`404`**: no hay copia local (hacer **Sync** primero)."
           },
           "response": []
         },
@@ -106,7 +152,7 @@
             "method": "DELETE",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/initiatives/{{initiativePublicId}}",
-            "description": "**Soft-delete:** no borra la fila; pone **`status = \"DELETED\"`**.\n\n**`200`**: `{ \"success\": true, \"softDeleted\": true, \"initiative\": { … } }`.\n\n**`404`**: no existe iniciativa con ese `publicId`. Para volver a datos de KashioOS: **Sync initiative**; para override manual: habilitar **PUT** y enviar otro `status`."
+            "description": "**Soft-delete:** no borra la fila; pone **`status = \"DELETED\"`**.\n\n**`200`**: `{ \"success\": true, \"softDeleted\": true, \"initiative\": { … } }`.\n\n**`404`**: no existe iniciativa con ese `publicId`. Para volver a datos de KashioOS: usar **Sync initiative** (body con `publicId` y `productType`); para override manual: habilitar **PUT** y enviar otro `status`."
           },
           "response": []
         }
@@ -131,12 +177,32 @@
       "name": "5. Artifact definitions",
       "item": [
         {
-          "name": "List artifact definitions",
+          "name": "List artifact definitions (active default)",
           "request": {
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `phase`, `phaseLabel`, `count`, `artifacts[]`), `filters`.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (**Run** | **Change** | **Both**, case-insensitive), `area`, `sortBy` (`phase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`). **Nota:** el query `phase` no filtra por fase; el front usa `phases[]` de la respuesta.\n\nDetalle: `docs/API_DATABASE_ENDPOINTS.md` §4."
+            "description": "Respuesta **`200`**: objeto **ArtifactDefinitionsListResponse** (no es un array plano): `totalArtifacts`, `totalPhases` (8), `phases[]` (siempre 8 ranuras con `phase`, `phaseLabel`, `count`, `artifacts[]`), `filters`.\n\n**Default importante:** si no envías `status`, el backend aplica `status = 1`, por lo que este request lista solo artefactos activos.\n\nQuery opcional: `name`, `publicId` (UUID), `initiativeType` (**Both** | **Change** | **New_Product**), `productType` (**Offering** | **Sellable** | **Non_Sellable**), `status` (**1** activo | **0** inactivo), `area`, `sortBy` (`phase`|`name`|`updatedAt`|`createdAt`|`id`), `sortOrder` (`asc`|`desc`).\n\nDetalle: `docs/API_DATABASE_ENDPOINTS.md` §4."
+          },
+          "response": []
+        },
+        {
+          "name": "List inactive artifact definitions (status=0)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions?status=0",
+            "description": "Lista artefactos inactivos / soft-deleted (`status = 0`). Útil para validar `DELETE /artifact-definitions/:publicId`, que ya no borra físicamente la fila."
+          },
+          "response": []
+        },
+        {
+          "name": "List active Sellable artifact definitions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions?status=1&productType=Sellable&initiativeType=New_Product&sortBy=name&sortOrder=asc",
+            "description": "Ejemplo de filtros combinados sobre la nueva estructura:\n- `status=1`: solo activos.\n- `productType=Sellable`: contención en `product_type` jsonb.\n- `initiativeType=New_Product`: tipo de iniciativa nuevo.\n\nTambién puedes usar `productType=Offering` o `productType=Non_Sellable`."
           },
           "response": []
         },
@@ -146,7 +212,7 @@
             "method": "GET",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Path: **`publicId`** (UUID estable de la fila). **`200`**: un **ArtifactDefinition** (`id`, `publicId`, `phase`, `phaseLabel`, `name`, `initiativeType`, `predecessorNames`, …). **`400`**: UUID inválido. **`404`**: no existe."
+            "description": "Path: **`publicId`** (UUID estable de la fila). **`200`**: un **ArtifactDefinition** (`id`, `publicId`, `phase`, `phaseLabel`, `name`, `initiativeType`, `productType`, `predecessorPublicIds`, `status`, …).\n\nEste endpoint no filtra por `status`: puede devolver artefactos activos (`1`) o inactivos (`0`) si existen.\n\n**`400`**: UUID inválido. **`404`**: no existe."
           },
           "response": []
         },
@@ -157,34 +223,62 @@
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Run\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"7.27. Ejemplo Artefacto Postman\",\n  \"phase\": 7,\n  \"phaseName\": \"Deployment\",\n  \"initiativeType\": \"New_Product\",\n  \"productType\": [\"Sellable\", \"Non_Sellable\"],\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorPublicIds\": [],\n  \"status\": 1\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions",
-            "description": "**`name`** obligatorio (único: **`409`** si ya existe otra fila con el mismo `name` exacto).\n\n**Fase:** al menos uno de **`phase`** (1–8, entero o string numérico) o **`phaseName`**. Opcional legacy: **`fase`** como alias de **`phase`** (no puede contradecir `phase`).\n\n**`initiativeType`:** en POST, si se omite → **`Both`**; si se envía → **Run** | **Change** | **Both** (cualquier capitalización).\n\n**`predecessorNames`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente.\n\n**`201`** creado; **`409`** nombre duplicado."
+            "description": "**`name`** obligatorio (único: **`409`** si ya existe otra fila con el mismo `name` exacto).\n\n**Fase:** al menos uno de **`phase`** (1–8, entero o string numérico) o **`phaseName`**. Opcional legacy: **`fase`** como alias de **`phase`** (no puede contradecir `phase`).\n\n**`initiativeType`:** si se omite → **`Both`**; si se envía → **Both** | **Change** | **New_Product** (también acepta `NEW_PRODUCT`, `new product`, `new-product`).\n\n**`productType`:** string único o array. Valores: **Offering**, **Sellable**, **Non_Sellable**.\n\n**`predecessorPublicIds`:** cada elemento = **`publicId`** (UUID) o **`name`** exacto de otra fila existente; se guarda como UUID en `predecessor_public_ids`.\n\n**`status`:** opcional; si se omite → **1** (activo). Acepta `1/0`, boolean y alias (`active`, `inactive`, `activo`, `inactivo`).\n\n**`201`** creado; **`409`** nombre duplicado."
           },
           "response": []
         },
         {
-          "name": "Update artifact definition",
+          "name": "Update artifact definition (full/partial)",
           "request": {
             "method": "PUT",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"name\": \"2.9. Ejemplo SDD (Postman)\",\n  \"phase\": 3,\n  \"phaseName\": \"Design\",\n  \"initiativeType\": \"Both\",\n  \"description\": \"Descripción de prueba\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorNames\": []\n}"
+              "raw": "{\n  \"name\": \"7.27. Ejemplo Artefacto Postman\",\n  \"phase\": 7,\n  \"phaseName\": \"Deployment\",\n  \"initiativeType\": \"Both\",\n  \"productType\": [\"Offering\", \"Sellable\"],\n  \"description\": \"Descripción actualizada desde Postman\",\n  \"mandatory\": false,\n  \"area\": \"Producto\",\n  \"predecessorPublicIds\": [],\n  \"status\": 1\n}"
             },
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Parcial o completo. **`initiativeType`** debe ser **Run** | **Change** | **Both** si se envía. Si cambias **`name`**, **`409`** si ya existe otro registro con ese nombre.\n\n**`200`** OK; **`404`** no existe."
+            "description": "Parcial o completo. Las claves omitidas no cambian.\n\nCobertura nueva:\n- `initiativeType`: **Both** | **Change** | **New_Product**.\n- `productType`: reemplaza el array completo de tipos de producto.\n- `predecessorPublicIds`: reemplaza el array completo; acepta UUID o `name` exacto y normaliza a UUID.\n- `status`: activa (`1`) o desactiva (`0`) sin borrar.\n\nSi cambias **`name`**, **`409`** si ya existe otro registro con ese nombre.\n\n**`200`** OK; **`404`** no existe."
           },
           "response": []
         },
         {
-          "name": "Delete artifact definition",
+          "name": "Deactivate artifact definition (PUT status=0)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 0\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
+            "description": "Desactiva el artefacto vía PUT, sin borrarlo. Después de esto desaparece del listado default (`GET /artifact-definitions`), pero sigue visible con `GET /artifact-definitions/:publicId` y con `GET /artifact-definitions?status=0`."
+          },
+          "response": []
+        },
+        {
+          "name": "Activate artifact definition (PUT status=1)",
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": 1\n}"
+            },
+            "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
+            "description": "Reactiva un artefacto inactivo (`status = 0`) cambiándolo a `status = 1`."
+          },
+          "response": []
+        },
+        {
+          "name": "Delete artifact definition (soft-delete status=0)",
           "request": {
             "method": "DELETE",
             "header": [],
             "url": "{{baseUrl}}/{{apiPrefix}}/artifact-definitions/{{artifactDefPublicId}}",
-            "description": "Sin body. **`200`**: `{ success, deleted: { publicId, name }, cascade: { artifactsUpdated, message } }` — elimina la fila y quita el **nombre** borrado de `predecessor_names` en otras filas.\n\n**`404`**: definición no encontrada. **`400`**: UUID inválido en path."
+            "description": "Sin body. **Soft-delete:** no borra la fila; hace `UPDATE artifact_definition SET status = 0`.\n\n**`200`**: `{ \"success\": true, \"softDeleted\": true, \"artifact\": { \"publicId\": \"...\", \"name\": \"...\", \"status\": 0 } }`.\n\n**`404`**: definición no encontrada. **`400`**: UUID inválido en path."
           },
           "response": []
         }

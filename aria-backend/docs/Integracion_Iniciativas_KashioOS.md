@@ -1,8 +1,9 @@
 # Integración de iniciativas — KashioOS → ARIA
 
-**Fecha:** 2026-05-08
+**Fecha:** 2026-05-12 (Migración 006)
 **Autor:** Backend ARIA
-**Estado:** Primera entrega (MVP). Solo guarda información básica de la iniciativa.
+**Estado:** MVP + filtro de artefactos por `productType` (migración 006).
+**Cambios v006 (2026-05-12):** `POST /sync/:publicId` (path-based) → `POST /sync` con body `{ publicId, productType? }`. `productType` es **opcional**: si se envía, la iniciativa lo guarda y el detalle filtra los artefactos por ese valor + el `initiativeType` upstream; si se omite, la iniciativa queda con `product_type = NULL` (o conserva el valor previo) y el detalle muestra todos los artefactos activos sin filtrar. No rompe iniciativas ya desplegadas.
 
 ---
 
@@ -26,17 +27,21 @@ de KashioOS, así que se rediseñó desde cero.
 ```
 Frontend / cliente
    │
-   │  POST /karia-svc/v2/initiatives/sync/:publicId
+   │  POST /karia-svc/v2/initiatives/sync
+   │  Body: { "publicId": UUID, "productType"?: "Offering"|"Sellable"|"Non_Sellable" }
    ▼
 ARIA backend (Express)
-   ├── Valida que :publicId sea UUID
+   ├── Valida body: publicId UUID (obligatorio).
+   ├── productType OPCIONAL: si está, valida ∈ {Offering, Sellable, Non_Sellable}.
    ├── GET https://kpdlc-svc-app-...run.app/api/v1/initiatives/:publicId
    │       Headers:  Authorization: Bearer ${KASHIOS_API_TOKEN}
    │                 Accept: application/json
    ├── Acepta envelope { success, data } o el objeto plano.
-   ├── Verifica que data.id == :publicId (defensa contra mismatch).
-   ├── Mapea solo los campos relevantes (descarta el resto).
+   ├── Verifica que data.id == publicId (defensa contra mismatch).
+   ├── Mapea solo los campos relevantes (descarta el resto) + adjunta productType del body si vino.
    ├── UPSERT en public.initiative (clave: public_id).
+   │   - Si el body trae productType válido, sobrescribe initiative.product_type.
+   │   - Si el body NO trae productType, preserva el valor anterior (o NULL en el primer insert).
    └── Devuelve la fila guardada
        · 201 si la creó
        · 200 si la actualizó
@@ -54,20 +59,28 @@ Todos cuelgan de `/karia-svc/v2/initiatives` (prefijo definido en `src/index.ts`
 
 | Método  | Ruta                  | Descripción                                                    |
 |---------|-----------------------|----------------------------------------------------------------|
-| POST    | `/sync/:publicId`     | Pide la iniciativa a KashioOS y hace upsert local. **Principal.** |
+| POST    | `/sync`               | Pide la iniciativa a KashioOS y hace upsert local. **Principal.** Body: `{ publicId, productType? }` (productType opcional). |
 | GET     | `/`                   | Listado liviano (**InitiativeSummary**), orden `synced_at DESC`. No llama a KashioOS. |
-| GET     | `/:publicId`          | Detalle (**InitiativeDetail**): datos de la iniciativa + 8 fases con `artifact_definition` por fase. 404 si no se sincronizó nunca. |
+| GET     | `/:publicId`          | Detalle (**InitiativeDetail**): datos de la iniciativa + 8 fases con `artifact_definition` filtrados por `productType` + `initiativeType`. 404 si no se sincronizó nunca. |
 | PUT     | `/:publicId`          | Update parcial (hoy solo `status`). **Ruta comentada** en `initiativeRoutes.ts` hasta habilitarla; el handler existe. |
 | DELETE  | `/:publicId`          | **Soft-delete:** pone `status = 'DELETED'`. **No** borra la fila ni toca KashioOS. 404 si no existe. |
 
-### 3.1 `POST /karia-svc/v2/initiatives/sync/:publicId`
+### 3.1 `POST /karia-svc/v2/initiatives/sync`
 
-- **Body:** ninguno.
-- **Path param:** `publicId` (UUID que también es el `id` en KashioOS).
+- **Body:** `application/json`.
+  ```json
+  {
+    "publicId":   "ed5c9978-c12b-4ba0-b127-3faf89d0e9a8",
+    "productType": "Sellable"
+  }
+  ```
+  - `publicId` (string UUID): identificador de la iniciativa en KashioOS y en ARIA. **Obligatorio.**
+  - `productType` (string): `Offering` | `Sellable` | `Non_Sellable`. **Opcional.** Si se envía, se persiste en `initiative.product_type` y `GET /:publicId` filtra los artefactos por ese tipo de producto. Si se omite (no aparece en el body, o llega `null` / string vacío / array vacío) la iniciativa queda con `product_type = NULL` (primer insert) o conserva el valor anterior (re-sync) y el detalle muestra todos los artefactos activos sin filtrar. Acepta también un array de un solo elemento (ej. `["Sellable"]`) para conveniencia del front. Si se envía un valor que no mapea a uno de los tres permitidos → `400`.
+- **Path param:** ninguno (la ruta path-based `POST /sync/:publicId` fue eliminada en la migración 006).
 - **Respuestas:**
   - `201 Created` → no existía localmente y se acaba de crear.
-  - `200 OK`      → ya existía, se actualizó con datos frescos.
-  - `400 Bad Request` → `publicId` no es UUID válido.
+  - `200 OK`      → ya existía, se actualizó con datos frescos. Si vino `productType`, se reescribe; si no, conserva el anterior.
+  - `400 Bad Request` → body inválido / `publicId` no es UUID / `productType` con valor no permitido.
   - `404 Not Found` → KashioOS no encontró esa iniciativa.
   - `502 Bad Gateway` → KashioOS respondió error / payload inválido / id distinto.
   - `504 Gateway Timeout` → la llamada a KashioOS tardó más que `KASHIOS_TIMEOUT_MS` (default 15s).
@@ -76,15 +89,28 @@ Todos cuelgan de `/karia-svc/v2/initiatives` (prefijo definido en `src/index.ts`
 **Ejemplos cURL:**
 
 ```bash
-# Sincroniza la iniciativa CHANGE de ejemplo
-curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
+# Sincroniza sin productType (sin filtro, no rompe el flujo viejo)
+curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"ed5c9978-c12b-4ba0-b127-3faf89d0e9a8"}'
 
-# Sincroniza la NEW_PRODUCT de ejemplo
-curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/c78267bb-e885-45db-ab7f-b4b5040d44e1
+# Sincroniza opcionalmente con productType = Sellable (activa el filtro)
+curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"ed5c9978-c12b-4ba0-b127-3faf89d0e9a8","productType":"Sellable"}'
 
-# Volver a llamar refresca el snapshot (200, mismo public_id)
-curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
+# Sincroniza una NEW_PRODUCT para producto Offering
+curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"c78267bb-e885-45db-ab7f-b4b5040d44e1","productType":"Offering"}'
+
+# Re-sincronizar cambiando el productType de una iniciativa ya existente
+curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"ed5c9978-c12b-4ba0-b127-3faf89d0e9a8","productType":"Non_Sellable"}'
 ```
+
+> **Compatibilidad / migración suave:** El flujo desplegado que ya consume el endpoint sin `productType` sigue funcionando. Iniciativas sin `product_type` se renderizan con TODOS los artefactos activos del catálogo y `artifactsFilterApplied = false`. Cuando el front esté listo, basta con empezar a enviar `productType` en el sync para activar el filtro por iniciativa, sin migración adicional.
 
 ### 3.2 `GET /karia-svc/v2/initiatives`
 
@@ -96,7 +122,17 @@ curl http://localhost:3000/karia-svc/v2/initiatives
 
 ### 3.3 `GET /karia-svc/v2/initiatives/:publicId`
 
-Detalle enriquecido (**InitiativeDetail**): campos de la iniciativa + `totalArtifacts` + `phases` (8 ranuras) con `artifacts[]` leídos de **`artifact_definition`** por número de fase. Devuelve **404** si nunca se sincronizó.
+Detalle enriquecido (**InitiativeDetail**): campos de la iniciativa + `productType` + `totalArtifacts` + `artifactsFilterApplied` + `phases` (8 ranuras) con `artifacts[]` filtrados por la combinación `productType` × `initiativeType` de la iniciativa. Devuelve **404** si nunca se sincronizó.
+
+**Filtro aplicado a `artifacts[]` de cada fase (cuando la iniciativa tiene `productType`):**
+
+| Condición                                                                 | SQL equivalente |
+|---------------------------------------------------------------------------|-----------------|
+| Activos                                                                   | `status = 1` |
+| Aplicables al tipo de producto de la iniciativa                           | `product_type @> ['<initiative.productType>']::jsonb` |
+| Aplicables al tipo de iniciativa (`Both` aplica siempre)                  | `initiative_type IN ('Both', '<equivalente>')` donde `CHANGE → Change`, `NEW_PRODUCT → New_Product` |
+
+Si `initiative.productType` es `null` (iniciativas sincronizadas antes de la migración 006 que aún no se han re-sincronizado), el filtro **no** se aplica y `artifacts[]` lista todos los artefactos activos. La bandera `artifactsFilterApplied` permite al front avisar al usuario que debe re-sincronizar para ver el listado correcto.
 
 ```bash
 curl http://localhost:3000/karia-svc/v2/initiatives/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
@@ -108,7 +144,7 @@ Body JSON mínimo: `{ "status": "IN_PROGRESS" }` (cualquier string; se normaliza
 
 ### 3.5 `DELETE /karia-svc/v2/initiatives/:publicId`
 
-**Soft-delete:** actualiza `status` a **`DELETED`**; la fila permanece. Respuesta típica: `{ "success": true, "softDeleted": true, "initiative": { … } }`. Para refrescar desde KashioOS: `POST /sync/:publicId` (sobrescribe `status` con el valor upstream).
+**Soft-delete:** actualiza `status` a **`DELETED`**; la fila permanece. Respuesta típica: `{ "success": true, "softDeleted": true, "initiative": { … } }`. Para refrescar desde KashioOS: `POST /sync` con body `{ publicId, productType }` (sobrescribe `status` con el valor upstream y reescribe `productType`).
 
 ```bash
 curl -X DELETE http://localhost:3000/karia-svc/v2/initiatives/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
@@ -138,6 +174,7 @@ re-sincronizar nada en KashioOS.
 | `estimatedEndDate`          | `estimated_end_date`        | `date`          | Solo `YYYY-MM-DD`. |
 | `intakeOrigin.code`         | `intake_origin_code`        | `varchar(50)`   | Solo viene en `NEW_PRODUCT` (`REQ-2026-013`). |
 | `phases[]`                  | `phases`                    | `jsonb`         | Array `{phaseNumber, status, enteredAt, completedAt}` ordenado. |
+| **— (body del request)**    | `product_type`              | `varchar(20)`   | **`Offering` \| `Sellable` \| `Non_Sellable`.** **Opcional.** Lo envía el front en el body de `POST /sync` cuando quiere activar el filtro por tipo de producto en `GET /:publicId`. CHECK constraint en BD; acepta `NULL`. |
 | —                           | `synced_at`                 | `timestamptz`   | `now()` en cada upsert. |
 | —                           | `created_at` / `updated_at` | `timestamptz`   | Estándar; trigger `update_updated_at_column`. |
 
@@ -162,6 +199,7 @@ requiere romper API existente.**
 - Strings vacíos → `null`.
 - `initiativeType` se normaliza a UPPERCASE y separadores → `_`. Si no es
   `CHANGE` ni `NEW_PRODUCT` se guarda `null` (no rompe la inserción).
+- `productType` (body): **opcional**. Si se omite, llega `null`, string vacío o array vacío → se trata como "no enviado" (no se aplica filtro y la BD conserva el valor anterior o queda en `NULL`). Si se envía: se normaliza case-insensitive (`sellable`, `Sellable`, `SELLABLE` → `Sellable`); acepta `non_sellable`, `non sellable`, `non-sellable`, `nonsellable`. Si viene array de un solo elemento se acepta y se desempaqueta. Cualquier otro valor o un array de más de un elemento → 400.
 - Fechas se truncan a `YYYY-MM-DD` (la columna es `date`).
 - `phases[]` se filtra a items que tengan `phaseNumber` numérico y se ordena.
 
@@ -188,6 +226,7 @@ CREATE TABLE public.initiative (
     estimated_start_date  date           NULL,
     estimated_end_date    date           NULL,
     intake_origin_code    varchar(50)    NULL,
+    product_type          varchar(20)    NULL,                    -- migración 006
     phases                jsonb          DEFAULT '[]'::jsonb NULL,
     synced_at             timestamptz    DEFAULT now() NOT NULL,
     created_at            timestamptz    DEFAULT now() NOT NULL,
@@ -197,7 +236,9 @@ CREATE TABLE public.initiative (
     CONSTRAINT initiative_current_phase_check
         CHECK (current_phase IS NULL OR (current_phase BETWEEN 1 AND 8)),
     CONSTRAINT initiative_initiative_type_check
-        CHECK (initiative_type IS NULL OR initiative_type IN ('CHANGE', 'NEW_PRODUCT'))
+        CHECK (initiative_type IS NULL OR initiative_type IN ('CHANGE', 'NEW_PRODUCT')),
+    CONSTRAINT initiative_product_type_check                       -- migración 006
+        CHECK (product_type IS NULL OR product_type IN ('Offering', 'Sellable', 'Non_Sellable'))
 );
 
 CREATE INDEX idx_initiative_status        ON public.initiative (status);
@@ -205,6 +246,7 @@ CREATE INDEX idx_initiative_type          ON public.initiative (initiative_type)
 CREATE INDEX idx_initiative_current_phase ON public.initiative (current_phase);
 CREATE INDEX idx_initiative_quarter       ON public.initiative (quarter_year, quarter_name);
 CREATE INDEX idx_initiative_code          ON public.initiative (code);
+CREATE INDEX idx_initiative_product_type  ON public.initiative (product_type);   -- migración 006
 
 -- trigger compartido que mantiene updated_at
 CREATE TRIGGER update_initiative_updated_at BEFORE UPDATE
@@ -214,13 +256,23 @@ CREATE TRIGGER update_initiative_updated_at BEFORE UPDATE
 
 ### Migración para BD existentes (DM)
 
-Archivo: `aria-backend/database/migrations/004_initiative_kashio_sync.sql`.
-**Es destructivo** (`DROP TABLE IF EXISTS public.initiative CASCADE` y luego
-`CREATE TABLE`). Aplica solo si los datos antiguos del modelo v1 no son
-necesarios — KashioOS es la fuente de verdad y se puede re-sincronizar.
+**Migraciones aplicables a `initiative`:**
+
+1. `database/migrations/004_initiative_kashio_sync.sql` — **destructivo**
+   (`DROP TABLE IF EXISTS public.initiative CASCADE` + `CREATE TABLE`). Solo si
+   los datos antiguos del modelo v1 no son necesarios; KashioOS es la fuente de
+   verdad y todo se puede re-sincronizar.
+2. `database/migrations/006_initiative_product_type.sql` — **no destructivo**:
+   añade la columna `product_type` (NULL), su CHECK e índice. Las iniciativas
+   existentes quedan con `product_type = NULL` hasta el siguiente `POST /sync`.
+   Detalle: `docs/Migracion_006_Initiative_Product_Type.md`.
 
 ```bash
+# Si nunca aplicaste 004 (BD limpia o solo modelo v1)
 psql "$ConnectionString_Karia" -f aria-backend/database/migrations/004_initiative_kashio_sync.sql
+
+# Para sumar el filtro por productType (idempotente)
+psql "$ConnectionString_Karia" -f aria-backend/database/migrations/006_initiative_product_type.sql
 ```
 
 ---
@@ -245,7 +297,7 @@ env.kashios.token       // bearer
 env.kashios.timeoutMs   // default 15000
 ```
 
-Si falta `baseUrl` o `token`, el endpoint `POST /sync/:publicId` responde
+Si falta `baseUrl` o `token`, el endpoint `POST /sync` responde
 **500** explicando cuál variable falta (no se hace la llamada saliente).
 
 ---
@@ -272,28 +324,35 @@ Si falta `baseUrl` o `token`, el endpoint `POST /sync/:publicId` responde
 ## 8. Cómo probarlo end-to-end
 
 ```bash
-# 1. Aplicar migración (destructivo: borra datos viejos del modelo ARIA v1)
+# 1. Aplicar migraciones (004 es destructivo; 006 solo añade product_type)
 cd aria-backend
 psql "$ConnectionString_Karia" -f database/migrations/004_initiative_kashio_sync.sql
+psql "$ConnectionString_Karia" -f database/migrations/006_initiative_product_type.sql
 
 # 2. Arrancar el backend
 npm run dev   # http://localhost:3000
 
-# 3. Sincronizar una iniciativa CHANGE
-curl -i -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
+# 3. Sincronizar una iniciativa CHANGE para producto Sellable
+curl -i -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"ed5c9978-c12b-4ba0-b127-3faf89d0e9a8","productType":"Sellable"}'
 # → HTTP/1.1 201 Created (la primera vez)
 
-# 4. Volver a llamar — refresca y devuelve 200
-curl -i -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
-# → HTTP/1.1 200 OK
+# 4. Volver a llamar (cambiando productType a Non_Sellable) — refresca y devuelve 200
+curl -i -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"ed5c9978-c12b-4ba0-b127-3faf89d0e9a8","productType":"Non_Sellable"}'
+# → HTTP/1.1 200 OK ; product_type ahora vale Non_Sellable y el filtro cambia
 
-# 5. Sincronizar la NEW_PRODUCT (trae intakeOrigin.code)
-curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync/c78267bb-e885-45db-ab7f-b4b5040d44e1
+# 5. Sincronizar una NEW_PRODUCT para producto Offering
+curl -X POST http://localhost:3000/karia-svc/v2/initiatives/sync \
+  -H 'Content-Type: application/json' \
+  -d '{"publicId":"c78267bb-e885-45db-ab7f-b4b5040d44e1","productType":"Offering"}'
 
 # 6. Listar lo que quedó local
 curl http://localhost:3000/karia-svc/v2/initiatives
 
-# 7. Detalle por UUID
+# 7. Detalle por UUID — artifacts[] vendrán filtrados por productType + initiativeType
 curl http://localhost:3000/karia-svc/v2/initiatives/ed5c9978-c12b-4ba0-b127-3faf89d0e9a8
 
 # 8. Soft-delete local (status DELETED; la fila sigue en BD)
@@ -302,7 +361,7 @@ curl -X DELETE http://localhost:3000/karia-svc/v2/initiatives/ed5c9978-c12b-4ba0
 
 ### Ejemplo de respuesta de `POST /sync` (objeto **Initiative** guardado en BD)
 
-El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de iniciativa + `totalArtifacts` y, en cada una de las 8 fases, `artifacts[]` (catálogo `artifact_definition`).
+El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de iniciativa + `totalArtifacts` + `artifactsFilterApplied` y, en cada una de las 8 fases, `artifacts[]` (catálogo `artifact_definition` filtrado).
 
 ```json
 {
@@ -315,6 +374,7 @@ El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de
   "currentPhase": 1,
   "initiativeType": "CHANGE",
   "productName": "Reportes Avanzados con IA",
+  "productType": "Sellable",
   "quarterName": "Q2",
   "quarterYear": 2026,
   "estimatedStartDate": "2026-04-08T00:00:00.000Z",
@@ -330,9 +390,9 @@ El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de
     { "phaseNumber": 7, "status": "PENDING", "enteredAt": null, "completedAt": null },
     { "phaseNumber": 8, "status": "PENDING", "enteredAt": null, "completedAt": null }
   ],
-  "syncedAt": "2026-05-08T17:24:55.000Z",
+  "syncedAt": "2026-05-12T17:24:55.000Z",
   "createdAt": "2026-05-08T17:24:55.000Z",
-  "updatedAt": "2026-05-08T17:24:55.000Z"
+  "updatedAt": "2026-05-12T17:24:55.000Z"
 }
 ```
 
@@ -342,7 +402,20 @@ El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de
 
 - **`public_id` = `id` UUID de KashioOS.** Hace el upsert idempotente y permite
   re-sincronizar bajo demanda sin duplicados.
-- **`POST /sync/:publicId` no recibe body.** El UUID viaja por la URL.
+- **`POST /sync` recibe body `{ publicId, productType? }`** (migración 006). El
+  `publicId` viaja en el body porque ahora hay un segundo campo (`productType`)
+  controlado por ARIA.
+- **`productType` es OPCIONAL hoy** y controlado por ARIA, no por KashioOS. Si
+  el front no lo envía, la iniciativa queda con `product_type = NULL` y el
+  detalle no aplica filtro por tipo de producto (compatible con el flujo
+  desplegado). Cuando el front esté listo para usar el filtro, basta con
+  empezar a enviarlo. El día que sea obligatorio se cambia el `parseProductTypeBody`
+  para que vuelva a lanzar `400` si falta. Cambiarlo solo requiere otro
+  `POST /sync` con el nuevo valor.
+- **El filtro de artefactos en el detalle es lado servidor.** El front solo
+  consume `artifacts[]` y la bandera `artifactsFilterApplied`. Los artefactos
+  con `status = 0` (soft-deleted) nunca aparecen en el detalle, sin importar
+  el `productType`.
 - **`DELETE` es soft-delete local-only** (`status = 'DELETED'`). *No* afecta a KashioOS ni elimina la fila.
 - **No guardamos el payload crudo.** Si alguna vez se necesita "debug del JSON
   original", se puede agregar después una columna `raw jsonb` opcional.
@@ -352,6 +425,10 @@ El **`GET /:publicId`** devuelve además **`InitiativeDetail`**: mismos datos de
 - **Tipo de iniciativa restringido a `CHANGE | NEW_PRODUCT`** vía CHECK,
   alineado con KashioOS. Cualquier otro valor que llegue se persiste como
   `NULL` en lugar de hacer fallar el upsert.
+- **Equivalencia `InitiativeType` ↔ `ArtifactInitiativeType`:** `CHANGE → Change`,
+  `NEW_PRODUCT → New_Product`. `Both` aplica siempre. Esto se usa al filtrar
+  los artefactos del catálogo: una iniciativa CHANGE recibe artefactos
+  marcados como `Both` o `Change`, nunca solo `New_Product`.
 
 ---
 

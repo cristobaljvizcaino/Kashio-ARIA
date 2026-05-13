@@ -1,4 +1,4 @@
-import { getPool, query } from '../config/database';
+import { query } from '../config/database';
 import { getPhaseLabel } from '../const/phases';
 import type {
   ArtifactDefinition,
@@ -7,6 +7,9 @@ import type {
   ArtifactDefinitionRow,
   ArtifactDefinitionSortField,
   ArtifactDefinitionUpdate,
+  ArtifactInitiativeType,
+  ArtifactProductType,
+  ArtifactStatus,
 } from '../types/artifactDefinition';
 import { buildSetClauses } from '../utils/sql';
 
@@ -20,8 +23,9 @@ const FIELD_MAP: Record<string, string> = {
 };
 
 const COLUMNS = `
-  id, public_id, phase, name, initiative_type, predecessor_names,
-  description, mandatory, area, created_at, updated_at
+  id, public_id, phase, name, initiative_type, product_type,
+  predecessor_public_ids, description, mandatory, area, status,
+  created_at, updated_at
 `;
 
 function toIso(value: string | Date | null): string {
@@ -42,10 +46,12 @@ function mapRow(row: ArtifactDefinitionRow): ArtifactDefinition {
     phaseLabel: getPhaseLabel(row.phase),
     name: row.name,
     initiativeType: row.initiative_type as ArtifactDefinition['initiativeType'],
-    predecessorNames: row.predecessor_names ?? [],
+    productType: (row.product_type ?? []) as ArtifactProductType[],
+    predecessorPublicIds: row.predecessor_public_ids ?? [],
     description: row.description,
     mandatory: row.mandatory,
     area: row.area || 'Producto',
+    status: (row.status === 0 ? 0 : 1) as ArtifactStatus,
     createdAt: toIso(row.created_at),
     updatedAt: toIso(row.updated_at),
   };
@@ -55,7 +61,51 @@ export async function findAll(): Promise<ArtifactDefinition[]> {
   const result = await query<ArtifactDefinitionRow>(
     `SELECT ${COLUMNS}
        FROM artifact_definition
+      WHERE status = 1
       ORDER BY phase ASC, name ASC`,
+  );
+  return result.rows.map(mapRow);
+}
+
+/**
+ * Devuelve los artefactos activos del catálogo aplicables a una iniciativa
+ * concreta:
+ *  - `status = 1` (siempre).
+ *  - `product_type @> [productType]` si `productType` viene; si es `null` o
+ *    `undefined` no se filtra por tipo de producto.
+ *  - `initiative_type IN ('Both', <equivalente>)` si `initiativeType` viene;
+ *     `'Change'` para iniciativas CHANGE y `'New_Product'` para NEW_PRODUCT.
+ *     Si `initiativeType` viene `null/undefined` no se filtra por este campo.
+ *
+ * Resultado ordenado por `phase ASC, name ASC` igual que `findAll`, para que
+ * el agrupamiento por fase del service sea estable.
+ */
+export async function findActiveForInitiative(filters: {
+  productType?: ArtifactProductType | null;
+  initiativeType?: ArtifactInitiativeType | null;
+}): Promise<ArtifactDefinition[]> {
+  const conditions: string[] = ['status = 1'];
+  const params: unknown[] = [];
+  let i = 1;
+
+  if (filters.productType) {
+    conditions.push(`product_type @> $${i}::jsonb`);
+    params.push(JSON.stringify([filters.productType]));
+    i++;
+  }
+
+  if (filters.initiativeType) {
+    conditions.push(`initiative_type IN ('Both', $${i})`);
+    params.push(filters.initiativeType);
+    i++;
+  }
+
+  const result = await query<ArtifactDefinitionRow>(
+    `SELECT ${COLUMNS}
+       FROM artifact_definition
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY phase ASC, name ASC`,
+    params,
   );
   return result.rows.map(mapRow);
 }
@@ -85,6 +135,16 @@ function buildWhereClause(
   if (filter.name && filter.name.trim() !== '') {
     conditions.push(`strpos(lower(name), lower($${i})) > 0`);
     params.push(filter.name.trim());
+    i++;
+  }
+  if (filter.productType) {
+    conditions.push(`product_type @> $${i}::jsonb`);
+    params.push(JSON.stringify([filter.productType]));
+    i++;
+  }
+  if (filter.status !== undefined) {
+    conditions.push(`status = $${i}`);
+    params.push(filter.status);
     i++;
   }
 
@@ -159,10 +219,6 @@ const REF_PUBLIC_ID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
- * Resuelve un predecesor por `public_id` (UUID) o por coincidencia exacta de `name`.
- * Devuelve el `name` canónico en BD o `null` si no existe.
- */
-/**
  * Indica si ya existe una fila con el mismo `name` (coincidencia exacta tras trim).
  * `excludePublicId`: al actualizar, ignorar la fila con ese `public_id`.
  */
@@ -188,39 +244,48 @@ export async function existsByExactName(
   return result.rows.length > 0;
 }
 
-export async function findNameByRef(ref: string): Promise<string | null> {
+/**
+ * Resuelve un predecesor a su `public_id` (UUID).
+ *
+ * Acepta tanto un `public_id` (UUID) como el `name` exacto del artefacto y
+ * devuelve siempre el `public_id` que se almacena en BD; o `null` si no existe.
+ */
+export async function findPublicIdByRef(ref: string): Promise<string | null> {
   const trimmed = ref.trim();
   if (!trimmed) return null;
   if (REF_PUBLIC_ID_REGEX.test(trimmed)) {
-    const result = await query<{ name: string }>(
-      `SELECT name FROM artifact_definition WHERE public_id = $1::uuid LIMIT 1`,
+    const result = await query<{ public_id: string }>(
+      `SELECT public_id FROM artifact_definition WHERE public_id = $1::uuid LIMIT 1`,
       [trimmed],
     );
-    return result.rows[0]?.name ?? null;
+    return result.rows[0]?.public_id ?? null;
   }
-  const result = await query<{ name: string }>(
-    `SELECT name FROM artifact_definition WHERE name = $1 LIMIT 1`,
+  const result = await query<{ public_id: string }>(
+    `SELECT public_id FROM artifact_definition WHERE name = $1 LIMIT 1`,
     [trimmed],
   );
-  return result.rows[0]?.name ?? null;
+  return result.rows[0]?.public_id ?? null;
 }
 
 export async function insert(input: ArtifactDefinitionInsertPayload): Promise<ArtifactDefinition> {
   const result = await query<ArtifactDefinitionRow>(
     `INSERT INTO artifact_definition
-       (public_id, phase, name, initiative_type, predecessor_names,
-        description, mandatory, area)
-     VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5::jsonb, $6, $7, $8)
+       (public_id, phase, name, initiative_type, product_type,
+        predecessor_public_ids, description, mandatory, area, status)
+     VALUES (COALESCE($1::uuid, gen_random_uuid()), $2, $3, $4, $5::jsonb,
+             $6::jsonb, $7, $8, $9, $10)
      RETURNING ${COLUMNS}`,
     [
       input.publicId ?? null,
       input.phase,
       input.name,
       input.initiativeType,
-      JSON.stringify(input.predecessorNames ?? []),
+      JSON.stringify(input.productType ?? []),
+      JSON.stringify(input.predecessorPublicIds ?? []),
       input.description ?? null,
       input.mandatory ?? false,
       input.area ?? 'Producto',
+      input.status ?? 1,
     ],
   );
   return mapRow(result.rows[0]);
@@ -234,9 +299,23 @@ export async function update(
   const { clauses, values } = built;
   let { nextIdx } = built;
 
-  if (updates.predecessorNames !== undefined) {
-    clauses.push(`predecessor_names = $${nextIdx}::jsonb`);
-    values.push(JSON.stringify(updates.predecessorNames));
+  if (updates.productType !== undefined) {
+    clauses.push(`product_type = $${nextIdx}::jsonb`);
+    values.push(JSON.stringify(updates.productType));
+    nextIdx++;
+  }
+
+  if (updates.predecessorPublicIds !== undefined) {
+    clauses.push(`predecessor_public_ids = $${nextIdx}::jsonb`);
+    values.push(JSON.stringify(updates.predecessorPublicIds));
+    nextIdx++;
+  }
+
+  if (updates.status !== undefined) {
+    const normalized: 0 | 1 =
+      typeof updates.status === 'boolean' ? (updates.status ? 1 : 0) : updates.status;
+    clauses.push(`status = $${nextIdx}`);
+    values.push(normalized);
     nextIdx++;
   }
 
@@ -258,60 +337,28 @@ export async function update(
 export interface RemoveResult {
   publicId: string;
   name: string;
-  cascadedFromArtifacts: number;
+  status: ArtifactStatus;
 }
 
 /**
- * Borra el artefacto identificado por `publicId` y, en la **misma transacción**,
- * elimina su `name` de cualquier `predecessor_names` que lo referencie en otras filas.
- *
- * Operadores PostgreSQL utilizados:
- *   - `predecessor_names ? $1`         → filtra filas cuyo array contiene el string.
- *   - `predecessor_names - $1`         → devuelve el array sin ese string.
- *
- * Retorna metadata (incluye cuántas filas se actualizaron en cascada) o `null`
- * si el artefacto no existía.
+ * Soft-delete del artefacto identificado por `publicId`.
+ * No borra la fila ni modifica `predecessor_public_ids`: solo cambia `status` a 0.
+ * Retorna metadata o `null` si el artefacto no existía.
  */
 export async function remove(publicId: string): Promise<RemoveResult | null> {
-  const pool = getPool();
-  if (!pool) throw new Error('Database not configured');
+  const result = await query<{ public_id: string; name: string; status: number }>(
+    `UPDATE artifact_definition
+        SET status = 0
+      WHERE public_id = $1::uuid
+      RETURNING public_id, name, status`,
+    [publicId],
+  );
 
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-
-    const found = await client.query<{ name: string }>(
-      'SELECT name FROM artifact_definition WHERE public_id = $1 FOR UPDATE',
-      [publicId],
-    );
-
-    if (found.rowCount === 0) {
-      await client.query('ROLLBACK');
-      return null;
-    }
-
-    const name = found.rows[0].name;
-
-    await client.query('DELETE FROM artifact_definition WHERE public_id = $1', [publicId]);
-
-    const cascade = await client.query(
-      `UPDATE artifact_definition
-          SET predecessor_names = predecessor_names - $1
-        WHERE predecessor_names ? $1`,
-      [name],
-    );
-
-    await client.query('COMMIT');
-
-    return {
-      publicId,
-      name,
-      cascadedFromArtifacts: cascade.rowCount ?? 0,
-    };
-  } catch (error) {
-    await client.query('ROLLBACK');
-    throw error;
-  } finally {
-    client.release();
-  }
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    publicId: row.public_id,
+    name: row.name,
+    status: (row.status === 0 ? 0 : 1) as ArtifactStatus,
+  };
 }

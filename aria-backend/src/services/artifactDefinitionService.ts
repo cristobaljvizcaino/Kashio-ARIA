@@ -18,6 +18,8 @@ import type {
   ArtifactDefinitionsByPhaseGroup,
   ArtifactDefinitionsListResponse,
   ArtifactInitiativeType,
+  ArtifactProductType,
+  ArtifactStatus,
 } from '../types/artifactDefinition';
 import { firstQueryString } from '../utils/queryParams';
 
@@ -38,34 +40,57 @@ const SORT_FIELDS: ArtifactDefinitionSortField[] = [
   'id',
 ];
 
+const INITIATIVE_TYPE_VALUES: ArtifactInitiativeType[] = ['Both', 'Change', 'New_Product'];
+const PRODUCT_TYPE_VALUES: ArtifactProductType[] = ['Offering', 'Sellable', 'Non_Sellable'];
+
 const INITIATIVE_MAP: Record<string, ArtifactInitiativeType> = {
-  run: 'Run',
-  change: 'Change',
   both: 'Both',
+  change: 'Change',
+  new_product: 'New_Product',
+  newproduct: 'New_Product',
+  'new product': 'New_Product',
+  'new-product': 'New_Product',
 };
+
+const PRODUCT_TYPE_MAP: Record<string, ArtifactProductType> = {
+  offering: 'Offering',
+  sellable: 'Sellable',
+  non_sellable: 'Non_Sellable',
+  'non sellable': 'Non_Sellable',
+  'non-sellable': 'Non_Sellable',
+  nonsellable: 'Non_Sellable',
+};
+
+function initiativeTypeLabel(): string {
+  return INITIATIVE_TYPE_VALUES.join(', ');
+}
+
+function productTypeLabel(): string {
+  return PRODUCT_TYPE_VALUES.join(', ');
+}
 
 function parseInitiativeType(raw: unknown): ArtifactInitiativeType | undefined {
   const s = firstQueryString(raw);
   if (!s) return undefined;
   const v = INITIATIVE_MAP[s.trim().toLowerCase()];
   if (!v) {
-    throw new HttpError(400, 'initiativeType must be Run, Change or Both');
+    throw new HttpError(400, `initiativeType must be one of: ${initiativeTypeLabel()}`);
   }
   return v;
 }
 
-/** JSON body: acepta Run / Change / Both en cualquier capitalización. */
+/** JSON body: acepta los valores en cualquier capitalización (Both/Change/New_Product). */
 function parseInitiativeTypeBody(raw: unknown): ArtifactInitiativeType {
   if (raw === undefined || raw === null) {
-    throw new HttpError(400, 'initiativeType must be Run, Change or Both');
+    throw new HttpError(400, `initiativeType must be one of: ${initiativeTypeLabel()}`);
   }
   const s = typeof raw === 'string' ? raw.trim() : String(raw).trim();
   if (s === '') {
-    throw new HttpError(400, 'initiativeType must be Run, Change or Both');
+    throw new HttpError(400, `initiativeType must be one of: ${initiativeTypeLabel()}`);
   }
   const v = INITIATIVE_MAP[s.toLowerCase()];
   if (!v) {
-    throw new HttpError(400, 'initiativeType must be Run, Change or Both');
+    throw new HttpError(400, `initiativeType must be one of: ${initiativeTypeLabel()}`);
   }
   return v;
 }
@@ -74,6 +99,72 @@ function parseInitiativeTypeBody(raw: unknown): ArtifactInitiativeType {
 function initiativeTypeForCreate(raw: unknown): ArtifactInitiativeType {
   if (raw === undefined || raw === null) return 'Both';
   return parseInitiativeTypeBody(raw);
+}
+
+function parseProductTypeValue(raw: unknown): ArtifactProductType {
+  const s = typeof raw === 'string' ? raw.trim() : String(raw ?? '').trim();
+  if (s === '') {
+    throw new HttpError(400, `productType entry must be one of: ${productTypeLabel()}`);
+  }
+  const v = PRODUCT_TYPE_MAP[s.toLowerCase()];
+  if (!v) {
+    throw new HttpError(400, `productType must contain only: ${productTypeLabel()}`);
+  }
+  return v;
+}
+
+/** Acepta string único, array o `undefined`. Devuelve array (posiblemente vacío) deduplicado. */
+function parseProductTypeBody(raw: unknown): ArtifactProductType[] {
+  if (raw === undefined || raw === null) return [];
+  const list = Array.isArray(raw) ? raw : [raw];
+  const seen = new Set<ArtifactProductType>();
+  const out: ArtifactProductType[] = [];
+  for (const entry of list) {
+    const v = parseProductTypeValue(entry);
+    if (!seen.has(v)) {
+      seen.add(v);
+      out.push(v);
+    }
+  }
+  return out;
+}
+
+function parseProductTypeFilter(raw: unknown): ArtifactProductType | undefined {
+  const s = firstQueryString(raw);
+  if (!s) return undefined;
+  return parseProductTypeValue(s);
+}
+
+/**
+ * Normaliza un valor de `status` que viene del cliente a `0` o `1`.
+ *
+ * Acepta:
+ *   - `1`, `0` (number o string)
+ *   - `true`, `false` (boolean o string `'true'` / `'false'`)
+ *   - `'active'`, `'inactive'`, `'activo'`, `'inactivo'` (case-insensitive)
+ *
+ * Cualquier otro valor → 400.
+ */
+function normalizeStatusValue(raw: unknown): ArtifactStatus {
+  if (raw === 1 || raw === 0) return raw;
+  if (typeof raw === 'boolean') return raw ? 1 : 0;
+  const s = String(raw).trim().toLowerCase();
+  if (s === '1' || s === 'true' || s === 'active' || s === 'activo') return 1;
+  if (s === '0' || s === 'false' || s === 'inactive' || s === 'inactivo') return 0;
+  throw new HttpError(400, 'status must be 1 (active) or 0 (inactive)');
+}
+
+function parseStatusFilter(raw: unknown): ArtifactStatus | undefined {
+  const s = firstQueryString(raw);
+  if (s === undefined || s === null || s === '') return undefined;
+  return normalizeStatusValue(s);
+}
+
+function parseStatusBody(raw: unknown): ArtifactStatus {
+  if (raw === undefined || raw === null) {
+    throw new HttpError(400, 'status must be 1 (active) or 0 (inactive)');
+  }
+  return normalizeStatusValue(raw);
 }
 
 function mergeLegacyFaseForPhase(input: {
@@ -177,28 +268,34 @@ function resolvePhaseFromBody(input: { phase?: unknown; phaseName?: unknown }): 
   return out;
 }
 
-async function resolvePredecessorRefs(refs: unknown): Promise<string[]> {
+/**
+ * Convierte una lista de referencias (UUIDs o nombres exactos) a una lista
+ * deduplicada de `public_id` (UUIDs) válidos en `artifact_definition`.
+ *
+ * Si alguna referencia no existe, lanza `400`.
+ */
+async function resolvePredecessorPublicIds(refs: unknown): Promise<string[]> {
   if (refs === undefined || refs === null) return [];
   if (!Array.isArray(refs)) {
-    throw new HttpError(400, 'predecessorNames must be an array');
+    throw new HttpError(400, 'predecessorPublicIds must be an array');
   }
   const seen = new Set<string>();
   const out: string[] = [];
   for (const ref of refs) {
     const trimmed = String(ref).trim();
     if (!trimmed) {
-      throw new HttpError(400, 'Each predecessorNames entry must be a non-empty string');
+      throw new HttpError(400, 'Each predecessorPublicIds entry must be a non-empty string');
     }
-    const name = await repository.findNameByRef(trimmed);
-    if (!name) {
+    const publicId = await repository.findPublicIdByRef(trimmed);
+    if (!publicId) {
       throw new HttpError(
         400,
         `Predecessor not found in artifact_definition: "${trimmed}" (use publicId or exact name)`,
       );
     }
-    if (!seen.has(name)) {
-      seen.add(name);
-      out.push(name);
+    if (!seen.has(publicId)) {
+      seen.add(publicId);
+      out.push(publicId);
     }
   }
   return out;
@@ -209,8 +306,10 @@ async function resolvePredecessorRefs(refs: unknown): Promise<string[]> {
  * agrupado por fase (el front elige la fase en UI).
  *
  * Query params:
- * - `name`, `publicId`, `initiativeType`, `area` (filtros actuales)
+ * - `name`, `publicId`, `initiativeType`, `area`, `productType`, `status` (filtros actuales)
  * - `sortBy`, `sortOrder` (orden global antes de agrupar)
+ *
+ * Si `status` se omite, el listado muestra solo artefactos activos (`status = 1`).
  *
  * `phases` siempre tiene 8 entradas (fases 1–8); las vacías para el filtro actual van con
  * `count: 0` y `artifacts: []`.
@@ -226,6 +325,8 @@ export async function listFromQuery(
   }
 
   const initiativeType = parseInitiativeType(rawQuery.initiativeType);
+  const productType = parseProductTypeFilter(rawQuery.productType);
+  const status = parseStatusFilter(rawQuery.status) ?? 1;
 
   const area = firstQueryString(rawQuery.area);
   const nameSearch = firstQueryString(rawQuery.name);
@@ -236,6 +337,8 @@ export async function listFromQuery(
   const filter: ArtifactDefinitionListFilters = {
     ...(publicIdFilter ? { publicId: publicIdFilter } : {}),
     ...(initiativeType ? { initiativeType } : {}),
+    ...(productType ? { productType } : {}),
+    ...(status !== undefined ? { status } : {}),
     ...(area ? { area } : {}),
     ...(nameSearch ? { name: nameSearch } : {}),
   };
@@ -310,16 +413,21 @@ export async function create(input: ArtifactDefinitionInput): Promise<ArtifactDe
   }
 
   const phase = resolvePhaseFromBody(mergeLegacyFaseForPhase(input));
-  const predecessorNames = await resolvePredecessorRefs(input.predecessorNames);
+  const productType = parseProductTypeBody(input.productType);
+  const predecessorPublicIds = await resolvePredecessorPublicIds(input.predecessorPublicIds);
+  const status: ArtifactStatus =
+    input.status === undefined || input.status === null ? 1 : normalizeStatusValue(input.status);
 
   const payload: ArtifactDefinitionInsertPayload = {
     name: canonicalName,
     phase,
     initiativeType: initiativeTypeForCreate(input.initiativeType),
-    predecessorNames,
+    productType,
+    predecessorPublicIds,
     description: input.description ?? null,
     mandatory: input.mandatory ?? false,
     area: input.area ?? 'Producto',
+    status,
     ...(input.publicId ? { publicId: input.publicId } : {}),
   };
 
@@ -352,8 +460,16 @@ export async function patch(
     );
   }
 
-  if (updates.predecessorNames !== undefined) {
-    payload.predecessorNames = await resolvePredecessorRefs(updates.predecessorNames);
+  if (updates.productType !== undefined) {
+    payload.productType = parseProductTypeBody(updates.productType);
+  }
+
+  if (updates.predecessorPublicIds !== undefined) {
+    payload.predecessorPublicIds = await resolvePredecessorPublicIds(updates.predecessorPublicIds);
+  }
+
+  if (updates.status !== undefined) {
+    payload.status = parseStatusBody(updates.status);
   }
 
   if (updates.name !== undefined) {
@@ -383,28 +499,20 @@ export async function patch(
 }
 
 /**
- * DELETE /:publicId : borra el artefacto y propaga el borrado al `predecessor_names`
- * de cualquier otro artefacto que lo referenciara por nombre. La operación es
- * atómica (transacción única en el repo).
+ * DELETE /:publicId : soft-delete. No borra la fila; solo cambia `status` a 0.
  */
 export async function destroy(publicId: string): Promise<ArtifactDefinitionDeleteResponse> {
   ensureUuid(publicId);
   const result = await repository.remove(publicId);
   if (!result) throw new HttpError(404, 'Artifact definition not found');
 
-  const cascadedFromArtifacts = result.cascadedFromArtifacts;
   return {
     success: true,
-    deleted: {
+    softDeleted: true,
+    artifact: {
       publicId: result.publicId,
       name: result.name,
-    },
-    cascade: {
-      artifactsUpdated: cascadedFromArtifacts,
-      message:
-        cascadedFromArtifacts === 0
-          ? 'No other artifacts referenced this name in predecessor_names.'
-          : `Removed "${result.name}" from predecessor_names of ${cascadedFromArtifacts} artifact(s).`,
+      status: result.status,
     },
   };
 }

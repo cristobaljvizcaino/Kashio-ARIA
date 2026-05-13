@@ -7,7 +7,7 @@ import type {
 
 const COLUMNS = `
   id, public_id, code, title, description, status, current_phase, initiative_type,
-  product_name, quarter_name, quarter_year, estimated_start_date, estimated_end_date,
+  product_name, product_type, quarter_name, quarter_year, estimated_start_date, estimated_end_date,
   intake_origin_code, phases, synced_at, created_at, updated_at
 `;
 
@@ -38,6 +38,7 @@ function mapRow(row: InitiativeRow): Initiative {
     currentPhase: row.current_phase,
     initiativeType: row.initiative_type as Initiative['initiativeType'],
     productName: row.product_name,
+    productType: row.product_type as Initiative['productType'],
     quarterName: row.quarter_name,
     quarterYear: row.quarter_year,
     estimatedStartDate: toIsoOrNull(row.estimated_start_date),
@@ -69,20 +70,31 @@ export async function findByPublicId(publicId: string): Promise<Initiative | nul
 /**
  * Upsert por `public_id`. Crea la fila si no existe; si ya existe, actualiza todos los
  * campos provenientes del snapshot KashioOS y refresca `synced_at`.
+ *
+ * `productType`: campo controlado por ARIA (no viene de KashioOS). Reglas:
+ *   - Si `payload.productType === undefined` → preserva el valor anterior
+ *     (no se sobreescribe, útil para re-syncs que no envían el campo).
+ *   - Si `payload.productType === null` → fuerza `NULL`.
+ *   - Si `payload.productType` es un string válido → lo persiste.
+ *
+ * Cuando se inserta por primera vez y `productType === undefined`, se guarda
+ * como `NULL` (default de columna).
  */
 export async function upsertFromKashio(
   payload: InitiativeUpsertPayload,
 ): Promise<Initiative> {
+  const productTypeProvided = payload.productType !== undefined;
+
   const result = await query<InitiativeRow>(
     `INSERT INTO initiative (
         public_id, code, title, description, status, current_phase, initiative_type,
-        product_name, quarter_name, quarter_year, estimated_start_date, estimated_end_date,
+        product_name, product_type, quarter_name, quarter_year, estimated_start_date, estimated_end_date,
         intake_origin_code, phases, synced_at
      )
      VALUES (
         $1::uuid, $2, $3, $4, $5, $6, $7,
-        $8, $9, $10, $11, $12,
-        $13, $14::jsonb, now()
+        $8, $9, $10, $11, $12, $13,
+        $14, $15::jsonb, now()
      )
      ON CONFLICT (public_id) DO UPDATE SET
         code                  = EXCLUDED.code,
@@ -92,6 +104,10 @@ export async function upsertFromKashio(
         current_phase         = EXCLUDED.current_phase,
         initiative_type       = EXCLUDED.initiative_type,
         product_name          = EXCLUDED.product_name,
+        product_type          = CASE
+                                  WHEN $16::boolean THEN EXCLUDED.product_type
+                                  ELSE initiative.product_type
+                                END,
         quarter_name          = EXCLUDED.quarter_name,
         quarter_year          = EXCLUDED.quarter_year,
         estimated_start_date  = EXCLUDED.estimated_start_date,
@@ -109,12 +125,14 @@ export async function upsertFromKashio(
       payload.currentPhase,
       payload.initiativeType,
       payload.productName,
+      productTypeProvided ? payload.productType : null,
       payload.quarterName,
       payload.quarterYear,
       payload.estimatedStartDate,
       payload.estimatedEndDate,
       payload.intakeOriginCode,
       JSON.stringify(payload.phases ?? []),
+      productTypeProvided,
     ],
   );
   return mapRow(result.rows[0]);

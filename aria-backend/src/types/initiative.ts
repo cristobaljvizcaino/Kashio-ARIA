@@ -1,7 +1,16 @@
-import type { ArtifactDefinition } from './artifactDefinition';
+import type { ArtifactDefinition, ArtifactProductType } from './artifactDefinition';
 
 /** Clasificación de iniciativas que envía KashioOS. */
 export type InitiativeType = 'CHANGE' | 'NEW_PRODUCT';
+
+/**
+ * Tipo de producto al que aplica la iniciativa. Lo envía el front en
+ * `POST /initiatives/sync` (body `{ publicId, productType }`) y se persiste
+ * en `initiative.product_type`. Determina qué artefactos del catálogo
+ * (`artifact_definition.product_type @> [productType]`) aparecen en el
+ * detalle (`GET /initiatives/:publicId`).
+ */
+export type InitiativeProductType = ArtifactProductType;
 
 /** Snapshot de cada fase tomado del payload `phases[]` de KashioOS. */
 export interface InitiativePhaseSnapshot {
@@ -25,6 +34,12 @@ export interface InitiativeSummary {
   currentPhaseLabel: string | null;
   initiativeType: InitiativeType | null;
   productName: string | null;
+  /**
+   * Tipo de producto declarado por el front en el último sync. `null` si
+   * la iniciativa fue sincronizada antes de que existiera la columna y todavía
+   * no se ha re-sincronizado con el body nuevo.
+   */
+  productType: InitiativeProductType | null;
   quarterName: string | null;
   quarterYear: number | null;
   estimatedStartDate: string | null;
@@ -61,6 +76,13 @@ export interface InitiativeDetail {
   currentPhaseLabel: string | null;
   initiativeType: InitiativeType | null;
   productName: string | null;
+  /**
+   * `null` para iniciativas viejas que no han hecho sync con el body nuevo
+   * `{ publicId, productType }`. Cuando es `null` el detalle muestra TODOS
+   * los artefactos activos por fase (sin filtrar por tipo de producto) y
+   * `phases[].artifactsFilterApplied` será `false`.
+   */
+  productType: InitiativeProductType | null;
   quarterName: string | null;
   quarterYear: number | null;
   estimatedStartDate: string | null;
@@ -70,6 +92,13 @@ export interface InitiativeDetail {
   createdAt: string;
   updatedAt: string;
   totalArtifacts: number;
+  /**
+   * `true` si el detalle aplicó el filtro `product_type @> [productType] AND
+   * initiative_type IN (...)` sobre los artefactos. `false` cuando la
+   * iniciativa todavía no tiene `productType` y se devuelven todos los
+   * artefactos activos del catálogo (compatibilidad con sincronizaciones viejas).
+   */
+  artifactsFilterApplied: boolean;
   phases: InitiativePhaseDetail[];
 }
 
@@ -87,6 +116,7 @@ export interface Initiative {
   currentPhase: number | null;
   initiativeType: InitiativeType | null;
   productName: string | null;
+  productType: InitiativeProductType | null;
   quarterName: string | null;
   quarterYear: number | null;
   estimatedStartDate: string | null;
@@ -98,7 +128,10 @@ export interface Initiative {
   updatedAt: string;
 }
 
-/** Payload normalizado para upsert (lo que produce el mapper desde la respuesta KashioOS). */
+/**
+ * Payload normalizado para upsert (lo que produce el mapper desde la respuesta
+ * KashioOS más el `productType` que envía el front en el body de `/sync`).
+ */
 export interface InitiativeUpsertPayload {
   publicId: string;
   code: string | null;
@@ -108,6 +141,12 @@ export interface InitiativeUpsertPayload {
   currentPhase: number | null;
   initiativeType: InitiativeType | null;
   productName: string | null;
+  /**
+   * Tipo de producto enviado por el front. Si llega `undefined` el repositorio
+   * preserva el valor anterior (no lo borra). Si llega un valor explícito
+   * (incluso `null`) lo persiste tal cual.
+   */
+  productType?: InitiativeProductType | null;
   quarterName: string | null;
   quarterYear: number | null;
   estimatedStartDate: string | null;
@@ -132,6 +171,7 @@ export interface InitiativeRow {
   estimated_start_date: string | Date | null;
   estimated_end_date: string | Date | null;
   intake_origin_code: string | null;
+  product_type: string | null;
   phases: InitiativePhaseSnapshot[] | null;
   synced_at: string | Date;
   created_at: string | Date;

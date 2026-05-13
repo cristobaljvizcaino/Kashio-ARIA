@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import * as initiativeService from '../services/initiativeService';
-import type { InitiativeUpdateBody } from '../services/initiativeService';
+import type {
+  InitiativeSyncBody,
+  InitiativeUpdateBody,
+} from '../services/initiativeService';
 
 /** GET / — Listado liviano de iniciativas locales (sin el array `phases`). */
 export async function listInitiatives(_req: Request, res: Response): Promise<void> {
@@ -21,19 +24,39 @@ export async function getInitiative(
 }
 
 /**
- * POST /sync/:publicId — Pide la iniciativa a KashioOS y la guarda/actualiza local.
+ * POST /sync — Pide la iniciativa a KashioOS y la guarda/actualiza local.
  * Devuelve `201` si la creó, `200` si la actualizó.
+ *
+ * Body esperado:
+ * ```json
+ * {
+ *   "publicId":   "ed5c9978-c12b-4ba0-b127-3faf89d0e9a8",
+ *   "productType": "Sellable"
+ * }
+ * ```
+ *
+ * `productType` ∈ `Offering | Sellable | Non_Sellable` y se persiste en
+ * `initiative.product_type` para que `GET /:publicId` filtre los artefactos
+ * activos del catálogo aplicables a ese tipo de producto.
  */
 export async function syncInitiative(
-  req: Request<{ publicId: string }>,
+  req: Request<unknown, unknown, InitiativeSyncBody>,
   res: Response,
 ): Promise<void> {
-  const existed = await initiativeService.getOne(req.params.publicId).catch((err) => {
-    // 404 esperable cuando aún no existe localmente
-    if (err && typeof err === 'object' && 'status' in err && err.status === 404) return null;
-    throw err;
-  });
-  const synced = await initiativeService.syncFromKashio(req.params.publicId);
+  const publicIdRaw = (req.body && typeof req.body === 'object' && !Array.isArray(req.body))
+    ? (req.body as InitiativeSyncBody).publicId
+    : undefined;
+  const publicIdStr = typeof publicIdRaw === 'string' ? publicIdRaw.trim() : '';
+
+  const existed = publicIdStr
+    ? await initiativeService.getOne(publicIdStr).catch((err) => {
+        // 404 esperable cuando aún no existe localmente
+        if (err && typeof err === 'object' && 'status' in err && err.status === 404) return null;
+        throw err;
+      })
+    : null;
+
+  const synced = await initiativeService.syncFromKashio(req.body);
   res.status(existed ? 200 : 201).json(synced);
 }
 
@@ -56,7 +79,8 @@ export async function updateInitiative(
 /**
  * DELETE /:publicId — **Soft-delete**: no elimina la fila; solo cambia
  * `status` a `DELETED`. Para restaurar: `PUT /:publicId` con un `status`
- * distinto, o re-sincronizar con `POST /sync/:publicId`.
+ * distinto, o re-sincronizar con `POST /sync` (body con `publicId` y
+ * `productType`).
  */
 export async function deleteInitiative(
   req: Request<{ publicId: string }>,

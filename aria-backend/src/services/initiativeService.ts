@@ -3,12 +3,16 @@ import * as artifactDefinitionRepository from '../repositories/artifactDefinitio
 import { kashioFetch } from './kashiosClient';
 import { HttpError } from '../types/http';
 import { MAX_PHASE, MIN_PHASE, getPhaseLabel } from '../const/phases';
-import type { ArtifactDefinition } from '../types/artifactDefinition';
+import type {
+  ArtifactDefinition,
+  ArtifactInitiativeType,
+} from '../types/artifactDefinition';
 import type {
   Initiative,
   InitiativeDetail,
   InitiativePhaseDetail,
   InitiativePhaseSnapshot,
+  InitiativeProductType,
   InitiativeSummary,
   InitiativeType,
   InitiativeUpsertPayload,
@@ -75,6 +79,73 @@ function asInitiativeType(v: unknown): InitiativeType | null {
   return null;
 }
 
+const PRODUCT_TYPE_VALUES: InitiativeProductType[] = [
+  'Offering',
+  'Sellable',
+  'Non_Sellable',
+];
+
+const PRODUCT_TYPE_MAP: Record<string, InitiativeProductType> = {
+  offering: 'Offering',
+  sellable: 'Sellable',
+  non_sellable: 'Non_Sellable',
+  'non sellable': 'Non_Sellable',
+  'non-sellable': 'Non_Sellable',
+  nonsellable: 'Non_Sellable',
+};
+
+/**
+ * Parsea el `productType` que envía el front en el body de `POST /sync`.
+ *
+ * **Es opcional.** Reglas:
+ *  - Ausente, `null`, string vacío o array vacío → devuelve `undefined`.
+ *    El service lo trata como "no enviado": el upsert preserva el valor previo
+ *    (o lo deja `NULL` si es el primer insert) y el detalle no aplica filtro
+ *    por tipo de producto en `GET /:publicId`.
+ *  - String (`"Sellable"`, case-insensitive) o array de un solo elemento →
+ *    se normaliza al valor canónico (`Offering` / `Sellable` / `Non_Sellable`).
+ *  - Cualquier otro tipo, array de varios elementos, o string que no mapea →
+ *    `400 Bad Request`.
+ */
+function parseProductTypeBody(raw: unknown): InitiativeProductType | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  let candidate = raw;
+  if (Array.isArray(raw)) {
+    if (raw.length === 0) return undefined;
+    if (raw.length !== 1) {
+      throw new HttpError(
+        400,
+        `productType must be a single value (one of: ${PRODUCT_TYPE_VALUES.join(', ')}) or omitted`,
+      );
+    }
+    candidate = raw[0];
+  }
+  const s = typeof candidate === 'string' ? candidate.trim() : String(candidate ?? '').trim();
+  if (s === '') return undefined;
+  const v = PRODUCT_TYPE_MAP[s.toLowerCase()];
+  if (!v) {
+    throw new HttpError(
+      400,
+      `productType must be one of: ${PRODUCT_TYPE_VALUES.join(', ')} (or omit it for no filter)`,
+    );
+  }
+  return v;
+}
+
+/**
+ * Mapea `Initiative.initiativeType` (CHANGE/NEW_PRODUCT) al valor equivalente
+ * usado en `artifact_definition.initiative_type` (Change/New_Product). Si la
+ * iniciativa no tiene `initiativeType` clasificado se devuelve `null` y el
+ * filtro por tipo de iniciativa no se aplica.
+ */
+function mapToArtifactInitiativeType(
+  type: InitiativeType | null,
+): ArtifactInitiativeType | null {
+  if (type === 'CHANGE') return 'Change';
+  if (type === 'NEW_PRODUCT') return 'New_Product';
+  return null;
+}
+
 /** Devuelve `YYYY-MM-DD` (la columna es `date`) a partir de un ISO o `null` si no se puede. */
 function asDateOnly(v: unknown): string | null {
   const s = asString(v);
@@ -105,6 +176,7 @@ function asPhases(v: unknown): InitiativePhaseSnapshot[] {
 function mapKashioToPayload(
   publicId: string,
   raw: KashioInitiativePayload,
+  productType?: InitiativeProductType,
 ): InitiativeUpsertPayload {
   const title = asString(raw.title);
   if (!title) {
@@ -120,6 +192,7 @@ function mapKashioToPayload(
     currentPhase: asInt(raw.currentPhase),
     initiativeType: asInitiativeType(raw.initiativeType),
     productName: asString(raw.product?.name),
+    productType: productType ?? undefined,
     quarterName: asString(raw.quarter?.name),
     quarterYear: asInt(raw.quarter?.year),
     estimatedStartDate: asDateOnly(raw.estimatedStartDate),
@@ -142,6 +215,7 @@ function toSummary(row: Initiative): InitiativeSummary {
       row.currentPhase !== null ? getPhaseLabel(row.currentPhase) : null,
     initiativeType: row.initiativeType,
     productName: row.productName,
+    productType: row.productType,
     quarterName: row.quarterName,
     quarterYear: row.quarterYear,
     estimatedStartDate: row.estimatedStartDate,
@@ -151,19 +225,35 @@ function toSummary(row: Initiative): InitiativeSummary {
 }
 
 /**
- * Devuelve un mapa `phaseNumber → ArtifactDefinition[]` con TODO el catálogo de
- * `artifact_definition`. La tabla es chica (decenas de filas), así que un único
- * SELECT y agrupar en memoria es más simple y rápido que 8 queries.
+ * Devuelve un mapa `phaseNumber → ArtifactDefinition[]` con los artefactos
+ * activos del catálogo aplicables a la iniciativa:
+ *  - Si `productType` viene → filtra por `product_type @> [productType]`.
+ *  - Si `initiativeType` viene → filtra por `initiative_type IN ('Both', equiv)`.
+ *  - Si ambos vienen `null` → devuelve TODOS los artefactos activos
+ *    (compatibilidad con iniciativas viejas que aún no tienen productType).
+ *
+ * La tabla es chica (decenas de filas), así que un único SELECT filtrado +
+ * agrupar en memoria sigue siendo más simple y rápido que 8 queries.
  */
-async function loadArtifactsGroupedByPhase(): Promise<Map<number, ArtifactDefinition[]>> {
-  const all = await artifactDefinitionRepository.findAll();
+async function loadArtifactsGroupedByPhase(filters: {
+  productType: InitiativeProductType | null;
+  initiativeType: InitiativeType | null;
+}): Promise<{ grouped: Map<number, ArtifactDefinition[]>; filterApplied: boolean }> {
+  const filterApplied = filters.productType !== null;
+  const list = filterApplied
+    ? await artifactDefinitionRepository.findActiveForInitiative({
+        productType: filters.productType,
+        initiativeType: mapToArtifactInitiativeType(filters.initiativeType),
+      })
+    : await artifactDefinitionRepository.findAll();
+
   const grouped = new Map<number, ArtifactDefinition[]>();
-  for (const artifact of all) {
-    const list = grouped.get(artifact.phase) ?? [];
-    list.push(artifact);
-    grouped.set(artifact.phase, list);
+  for (const artifact of list) {
+    const bucket = grouped.get(artifact.phase) ?? [];
+    bucket.push(artifact);
+    grouped.set(artifact.phase, bucket);
   }
-  return grouped;
+  return { grouped, filterApplied };
 }
 
 /**
@@ -214,12 +304,22 @@ export async function getOne(publicId: string): Promise<Initiative> {
 
 /**
  * GET /:publicId — Detalle enriquecido: la iniciativa + por cada una de las 8
- * fases los `artifact_definition` asociados a esa fase.
+ * fases los `artifact_definition` aplicables a la iniciativa filtrados por:
+ *   - `status = 1`
+ *   - `product_type @> [initiative.productType]`  (solo si productType existe)
+ *   - `initiative_type IN ('Both', equivalente)`   (solo si initiativeType existe)
+ *
+ * `artifactsFilterApplied` indica si el filtro corrió. Será `false` para
+ * iniciativas que aún no han hecho re-sync con el body nuevo y por tanto
+ * tienen `productType = null` (compatibilidad).
  */
 export async function getDetail(publicId: string): Promise<InitiativeDetail> {
   const initiative = await getOne(publicId);
-  const artifactsByPhase = await loadArtifactsGroupedByPhase();
-  const phases = buildPhaseDetails(initiative.phases, artifactsByPhase);
+  const { grouped, filterApplied } = await loadArtifactsGroupedByPhase({
+    productType: initiative.productType,
+    initiativeType: initiative.initiativeType,
+  });
+  const phases = buildPhaseDetails(initiative.phases, grouped);
   const totalArtifacts = phases.reduce((acc, p) => acc + p.artifactsCount, 0);
 
   return {
@@ -233,6 +333,7 @@ export async function getDetail(publicId: string): Promise<InitiativeDetail> {
       initiative.currentPhase !== null ? getPhaseLabel(initiative.currentPhase) : null,
     initiativeType: initiative.initiativeType,
     productName: initiative.productName,
+    productType: initiative.productType,
     quarterName: initiative.quarterName,
     quarterYear: initiative.quarterYear,
     estimatedStartDate: initiative.estimatedStartDate,
@@ -242,16 +343,43 @@ export async function getDetail(publicId: string): Promise<InitiativeDetail> {
     createdAt: initiative.createdAt,
     updatedAt: initiative.updatedAt,
     totalArtifacts,
+    artifactsFilterApplied: filterApplied,
     phases,
   };
 }
 
 /**
- * Pide la iniciativa a KashioOS por `publicId`, normaliza el payload y hace upsert
- * en `initiative`. Idempotente: re-llamar refresca el snapshot local.
+ * Body de `POST /karia-svc/v2/initiatives/sync`.
+ *
+ *  - `publicId` (UUID): identifica la iniciativa en KashioOS y en ARIA. **Obligatorio.**
+ *  - `productType`: tipo de producto (`Offering` | `Sellable` | `Non_Sellable`).
+ *      **Opcional.** Si se omite (o llega `null` / vacío) la iniciativa queda
+ *      sin `productType` (o conserva el que ya tenía) y `GET /:publicId` muestra
+ *      todos los artefactos activos del catálogo. Si se envía un valor válido,
+ *      se persiste en `initiative.product_type` y el detalle filtra los
+ *      artefactos por ese valor.
  */
-export async function syncFromKashio(publicId: string): Promise<Initiative> {
+export interface InitiativeSyncBody {
+  publicId?: unknown;
+  productType?: unknown;
+}
+
+/**
+ * `POST /sync` — Pide la iniciativa a KashioOS, normaliza el payload (más el
+ * `productType` opcional que envía el front) y hace upsert en `initiative`.
+ * Idempotente: re-llamar refresca el snapshot local. Si el body trae
+ * `productType` válido, lo reescribe; si lo omite, preserva el valor previo.
+ */
+export async function syncFromKashio(body: InitiativeSyncBody): Promise<Initiative> {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw new HttpError(400, 'Invalid body');
+  }
+
+  const publicId =
+    typeof body.publicId === 'string' ? body.publicId.trim() : '';
   ensureUuid(publicId);
+
+  const productType = parseProductTypeBody(body.productType);
 
   const envelope = await kashioFetch<KashioEnvelope | KashioInitiativePayload>(
     `/api/v1/initiatives/${publicId}`,
@@ -275,7 +403,7 @@ export async function syncFromKashio(publicId: string): Promise<Initiative> {
     );
   }
 
-  const payload = mapKashioToPayload(publicId, raw);
+  const payload = mapKashioToPayload(publicId, raw, productType);
   return initiativeRepository.upsertFromKashio(payload);
 }
 
@@ -295,7 +423,7 @@ export interface InitiativeUpdateBody {
  * PUT /:publicId — Update parcial. Hoy solo permite cambiar `status`. Útil tanto
  * para "restaurar" una iniciativa soft-deleted (`status: 'IN_PROGRESS'`, etc.)
  * como para marcarla en cualquier otro estado custom de ARIA. Re-sincronizar
- * con `POST /sync/:publicId` puede sobreescribir `status` con el valor de
+ * con `POST /sync` (body) puede sobreescribir `status` con el valor de
  * KashioOS, así que esta operación es solo override local.
  */
 export async function update(
@@ -335,7 +463,7 @@ export async function update(
  * Soft-delete: NO borra la fila. Solo cambia `status` a `DELETED` para que
  * la iniciativa siga existiendo en ARIA y pueda ser "restaurada" más tarde
  * vía `PUT /:publicId` con un `status` distinto, o re-sincronizada desde
- * KashioOS con `POST /sync/:publicId`.
+ * KashioOS con `POST /sync` (body con `publicId` + `productType`).
  */
 export async function destroy(publicId: string): Promise<Initiative> {
   ensureUuid(publicId);
